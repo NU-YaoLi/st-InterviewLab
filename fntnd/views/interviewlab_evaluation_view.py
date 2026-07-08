@@ -1,4 +1,4 @@
-"""Post-interview evaluation dashboard view."""
+"""Modern post-interview evaluation dashboard."""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ from bknd.interviewlab_openai import get_openai_client
 from fntnd.interviewlab_errors import display_openai_error
 from fntnd.interviewlab_state import apply_state_to_session, get_api_key_from_session, state_from_session
 from fntnd.views.interviewlab_interview_view import render_chat_history
-from interviewlab_config import TOTAL_QUESTIONS
 
 
 def render_evaluation_view() -> None:
@@ -22,46 +21,74 @@ def render_evaluation_view() -> None:
 
     mode = st.session_state.get("interview_mode", "Behavioral")
     labels = get_dimension_labels(mode)
+    overall = results.get("overall_score", 0)
+    role = st.session_state.get("target_role", "N/A")
+    duration = st.session_state.get("interview_duration_minutes", 20)
+    responses = st.session_state.get("responses", [])
 
-    st.subheader("Evaluation Dashboard")
+    st.markdown(
+        f"""
+        <div class="eval-hero">
+            <div class="eval-score-big">{overall}</div>
+            <div class="eval-score-label">Overall Score out of 100</div>
+            <p style="color:#64748b;margin-top:1rem;font-size:0.9rem">
+                {mode} · {role} · {duration} min session · {len(responses)} responses
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    col1, col2, col3 = st.columns([1, 1, 2])
-    with col1:
-        st.metric("Overall Score", f"{results.get('overall_score', 0)} / 100")
-    with col2:
-        st.metric("Questions Completed", TOTAL_QUESTIONS)
-    with col3:
-        st.caption(
-            f"Mode: **{mode}** · Role: **{st.session_state.get('target_role', 'N/A')}**"
-        )
-
-    st.divider()
-
-    st.markdown("### Dimension Scores")
     dims = results.get("dimension_scores", {})
     d_cols = st.columns(3)
     for i, (key, label) in enumerate(labels.items()):
         with d_cols[i]:
-            st.metric(label, f"{dims.get(key, 0)} / 10")
+            score = dims.get(key, 0)
+            st.markdown(
+                f"""
+                <div class="metric-card">
+                    <div class="metric-value">{score}<span style="font-size:1rem;color:#94a3b8">/10</span></div>
+                    <div class="metric-label">{label}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-    st.divider()
+    st.markdown("<br>", unsafe_allow_html=True)
 
     fb_col1, fb_col2 = st.columns(2)
     with fb_col1:
-        st.markdown("### What went well")
-        for item in results.get("strengths", []):
-            st.markdown(f"- {item}")
+        strengths_html = "".join(
+            f"<li>{item}</li>" for item in results.get("strengths", [])
+        )
+        st.markdown(
+            f"""
+            <div class="feedback-card strengths-card">
+                <h4>✅ What went well</h4>
+                <ul>{strengths_html}</ul>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     with fb_col2:
-        st.markdown("### Areas for improvement")
-        for item in results.get("improvements", []):
-            st.markdown(f"- {item}")
-
-    st.divider()
+        improvements_html = "".join(
+            f"<li>{item}</li>" for item in results.get("improvements", [])
+        )
+        st.markdown(
+            f"""
+            <div class="feedback-card improvements-card">
+                <h4>📈 Areas to improve</h4>
+                <ul>{improvements_html}</ul>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     sample = results.get("sample_answer", "")
     if sample:
-        st.markdown("### Sample Optimized Answer")
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("#### 💡 Sample Optimized Answer")
         st.info(sample)
 
     turn_evals = st.session_state.get("turn_evaluations", [])
@@ -69,6 +96,14 @@ def render_evaluation_view() -> None:
         with st.expander("Per-turn evaluations"):
             for i, te in enumerate(turn_evals, start=1):
                 st.markdown(f"**Turn {i}** — Score: {te.get('overall_score', 'N/A')}/100")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    _, btn_col, _ = st.columns([1, 2, 1])
+    with btn_col:
+        if st.button("Start New Interview", type="primary", use_container_width=True):
+            from fntnd.interviewlab_state import reset_runtime_session
+            reset_runtime_session()
+            st.rerun()
 
 
 def _run_retroactive_evaluation() -> None:

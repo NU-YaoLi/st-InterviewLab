@@ -14,7 +14,7 @@ from typing import Any
 import streamlit as st
 
 from bknd.interviewlab_engine import InterviewState
-from interviewlab_config import SESSION_DEFAULTS, TOTAL_QUESTIONS
+from interviewlab_config import DEFAULT_DURATION_MINUTES, SESSION_DEFAULTS, TOTAL_QUESTIONS
 
 
 def init_session_state() -> None:
@@ -52,6 +52,10 @@ def state_from_session(session: dict[str, Any] | Any) -> InterviewState:
         turn_evaluations=list(session.get("turn_evaluations", [])),
         last_tts_audio=session.get("last_tts_audio"),
         error_message=session.get("error_message"),
+        interview_duration_minutes=session.get(
+            "interview_duration_minutes", DEFAULT_DURATION_MINUTES
+        ),
+        interview_started_at=session.get("interview_started_at"),
     )
 
 
@@ -78,6 +82,8 @@ def apply_state_to_session(state: InterviewState, session: dict[str, Any] | Any)
     session["turn_evaluations"] = state.turn_evaluations
     session["last_tts_audio"] = state.last_tts_audio
     session["error_message"] = state.error_message
+    session["interview_duration_minutes"] = state.interview_duration_minutes
+    session["interview_started_at"] = state.interview_started_at
 
 
 def reset_runtime_session() -> None:
@@ -91,6 +97,9 @@ def reset_runtime_session() -> None:
         "resume": st.session_state.get("resume"),
         "input_mode": st.session_state.get("input_mode"),
         "ai_voice_enabled": st.session_state.get("ai_voice_enabled"),
+        "interview_duration_minutes": st.session_state.get(
+            "interview_duration_minutes", DEFAULT_DURATION_MINUTES
+        ),
     }
     for key, default in SESSION_DEFAULTS.items():
         st.session_state[key] = default

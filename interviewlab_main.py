@@ -33,12 +33,16 @@ _REQUIRED_CONFIG_NAMES = (
     "TTS_FALLBACK_MODEL",
     "TTS_VOICE",
     "TOTAL_QUESTIONS",
+    "DURATION_OPTIONS",
+    "DEFAULT_DURATION_MINUTES",
+    "MINUTES_PER_QUESTION",
     "PER_TURN_EVALUATION",
     "INTERVIEW_MODES",
     "INPUT_MODES",
     "SESSION_DEFAULTS",
     "get_system_prompt",
     "get_rubric",
+    "questions_for_duration",
 )
 
 _CONFIG_SNAPSHOT: dict[str, object] = {}
@@ -140,6 +144,7 @@ _load_package("fntnd", _root / "fntnd" / "__init__.py")
 _reinforce_config()
 _load_module("fntnd.interviewlab_state", _root / "fntnd" / "interviewlab_state.py")
 _load_module("fntnd.interviewlab_errors", _root / "fntnd" / "interviewlab_errors.py")
+_load_module("fntnd.interviewlab_styles", _root / "fntnd" / "interviewlab_styles.py")
 
 _load_package("fntnd.views", _root / "fntnd" / "views" / "__init__.py")
 _load_module(

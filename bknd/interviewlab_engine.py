@@ -9,16 +9,19 @@ later be swapped for a database without rewriting core logic.
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
 from openai import OpenAI, OpenAIError
 
 from interviewlab_config import (
+    DEFAULT_DURATION_MINUTES,
     FOLLOW_UP_SYSTEM_PROMPT,
     INTERVIEWLAB_MODEL,
     TOTAL_QUESTIONS,
     get_system_prompt,
+    questions_for_duration,
 )
 
 
@@ -50,6 +53,8 @@ class InterviewState:
     chat_history: list[dict[str, str]] = field(default_factory=list)
     current_question_index: int = 0
     total_questions: int = TOTAL_QUESTIONS
+    interview_duration_minutes: int = DEFAULT_DURATION_MINUTES
+    interview_started_at: float | None = None
     current_question_text: str = ""
     responses: list[dict[str, Any]] = field(default_factory=list)
     awaiting_follow_up: bool = False
@@ -91,6 +96,7 @@ def reset_interview_state(state: InterviewState) -> None:
     state.turn_evaluations = []
     state.last_tts_audio = None
     state.error_message = None
+    state.interview_started_at = None
 
 
 def _context_block(ctx: InterviewContext) -> str:
@@ -102,6 +108,37 @@ def _context_block(ctx: InterviewContext) -> str:
         f"Job description:\n{ctx.job_description or '(none provided)'}\n\n"
         f"Candidate resume/profile:\n{ctx.resume or '(none provided)'}"
     )
+
+
+def get_remaining_seconds(state: InterviewState) -> float:
+    """Return seconds left in the interview, or 0 if expired/not started."""
+    if state.interview_started_at is None:
+        return float(state.interview_duration_minutes * 60)
+    elapsed = time.time() - state.interview_started_at
+    return max(0.0, state.interview_duration_minutes * 60 - elapsed)
+
+
+def is_time_expired(state: InterviewState) -> bool:
+    """Return True when the interview timer has run out."""
+    return get_remaining_seconds(state) <= 0
+
+
+def get_time_progress(state: InterviewState) -> float:
+    """Return 0.0–1.0 progress based on elapsed time."""
+    total = state.interview_duration_minutes * 60
+    if total <= 0:
+        return 0.0
+    if state.interview_started_at is None:
+        return 0.0
+    elapsed = time.time() - state.interview_started_at
+    return min(elapsed / total, 1.0)
+
+
+def format_remaining_time(state: InterviewState) -> str:
+    """Format remaining time as MM:SS."""
+    remaining = int(get_remaining_seconds(state))
+    minutes, seconds = divmod(remaining, 60)
+    return f"{minutes:02d}:{seconds:02d}"
 
 
 def _build_messages(state: InterviewState, instruction: str = "") -> list[dict[str, str]]:
@@ -140,11 +177,13 @@ def start_interview(state: InterviewState, client: OpenAI) -> str:
     """Begin the interview and return the first interviewer message."""
     reset_interview_state(state)
     state.interview_active = True
-    state.total_questions = TOTAL_QUESTIONS
+    state.interview_started_at = time.time()
+    state.total_questions = questions_for_duration(state.interview_duration_minutes)
 
     instruction = (
-        f"This is question 1 of {state.total_questions}. "
-        "Welcome the candidate and ask the first interview question."
+        f"This is question 1 of approximately {state.total_questions}. "
+        f"The interview is {state.interview_duration_minutes} minutes long. "
+        "Welcome the candidate warmly and ask the first interview question."
     )
     question = _call_llm(client, _build_messages(state, instruction=instruction), temperature=0.8)
 
@@ -202,17 +241,33 @@ def _generate_next_main_question(state: InterviewState, client: OpenAI) -> str:
     return question
 
 
-def _close_interview(state: InterviewState, client: OpenAI) -> str:
-    instruction = (
-        "The candidate has finished the final question. "
-        "Thank them professionally and clearly state that the interview has concluded."
-    )
+def _close_interview(
+    state: InterviewState,
+    client: OpenAI,
+    *,
+    time_expired: bool = False,
+) -> str:
+    if time_expired:
+        instruction = (
+            "The interview time has expired. "
+            "Thank the candidate professionally and clearly state that the interview has concluded."
+        )
+    else:
+        instruction = (
+            "The candidate has finished the final question. "
+            "Thank them professionally and clearly state that the interview has concluded."
+        )
     closing = _call_llm(client, _build_messages(state, instruction=instruction), temperature=0.6)
 
     state.interview_active = False
     state.interview_complete = True
     add_message(state, "assistant", closing)
     return closing
+
+
+def force_close_interview(state: InterviewState, client: OpenAI) -> str:
+    """Close the interview immediately when the timer expires with no pending answer."""
+    return _close_interview(state, client, time_expired=True)
 
 
 def process_user_response(
@@ -235,7 +290,15 @@ def process_user_response(
         }
     )
 
-    if state.follow_up_count < 2:
+    if is_time_expired(state):
+        closing = _close_interview(state, client, time_expired=True)
+        return {
+            "action": "complete",
+            "message": closing,
+            "user_answer": user_answer,
+        }
+
+    if state.follow_up_count < 2 and not is_time_expired(state):
         follow_up_check = _check_follow_up(client, state, user_answer)
         if follow_up_check.get("needs_follow_up") and follow_up_check.get("follow_up_question"):
             follow_up_q = follow_up_check["follow_up_question"].strip()
@@ -252,7 +315,7 @@ def process_user_response(
     state.awaiting_follow_up = False
     state.follow_up_count = 0
 
-    if state.current_question_index >= state.total_questions:
+    if state.current_question_index >= state.total_questions or is_time_expired(state):
         closing = _close_interview(state, client)
         return {
             "action": "complete",
@@ -269,11 +332,13 @@ def process_user_response(
 
 
 def get_progress_fraction(state: InterviewState) -> float:
-    """Return 0.0–1.0 progress for the progress bar."""
-    if state.total_questions <= 0:
-        return 0.0
+    """Return 0.0–1.0 progress based on time elapsed."""
     if state.interview_complete:
         return 1.0
+    if state.interview_started_at is not None:
+        return get_time_progress(state)
+    if state.total_questions <= 0:
+        return 0.0
     completed = max(0, state.current_question_index - 1)
     if state.interview_active and state.responses:
         completed = min(state.current_question_index, state.total_questions)
