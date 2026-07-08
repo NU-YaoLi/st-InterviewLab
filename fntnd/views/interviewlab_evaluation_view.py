@@ -98,12 +98,10 @@ def render_evaluation_view() -> None:
                 st.markdown(f"**Turn {i}** — Score: {te.get('overall_score', 'N/A')}/100")
 
     st.markdown("<br>", unsafe_allow_html=True)
-    _, btn_col, _ = st.columns([1, 2, 1])
-    with btn_col:
-        if st.button("Start New Interview", type="primary", use_container_width=True):
-            from fntnd.interviewlab_state import reset_runtime_session
-            reset_runtime_session()
-            st.rerun()
+    if st.button("Start New Interview", type="primary", use_container_width=True):
+        from fntnd.interviewlab_state import reset_runtime_session
+        reset_runtime_session()
+        st.rerun()
 
 
 def _run_retroactive_evaluation() -> None:

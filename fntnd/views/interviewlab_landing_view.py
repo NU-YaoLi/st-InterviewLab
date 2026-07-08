@@ -2,15 +2,77 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import streamlit as st
 
-from interviewlab_config import DURATION_OPTIONS, INPUT_MODES
+_MODE_OPTIONS = [
+    (
+        "Behavioral",
+        "mode_behavioral",
+        "💬",
+        "Practice STAR stories, teamwork, and leadership scenarios.",
+    ),
+    (
+        "Technical",
+        "mode_technical",
+        "⚙️",
+        "System design, coding concepts, and deep problem solving.",
+    ),
+]
+
+_DURATION_OPTIONS = [
+    (15, "dur_15", "Quick warm-up — a light, easy mock interview to get started."),
+    (20, "dur_20", "Balanced practice — realistic pacing with solid depth."),
+    (30, "dur_30", "In-depth session — more detailed questions and follow-ups."),
+    (45, "dur_45", "Full simulation — the most thorough, mastery-level mock interview."),
+]
+
+_INPUT_OPTIONS = [
+    (
+        "Audio + Text",
+        "input_audio_text",
+        "🎙️",
+        "Speak your answers naturally, like a real interview. Text fallback included.",
+    ),
+    (
+        "Text Only",
+        "input_text_only",
+        "⌨️",
+        "Type your responses — ideal for quiet spaces or focused practice.",
+    ),
+]
 
 
 def _section_title(title: str, subtitle: str = "") -> None:
     st.markdown(f"#### {title}")
     if subtitle:
         st.caption(subtitle)
+
+
+def _option_card_label(icon: str, title: str, description: str) -> str:
+    if icon:
+        return f"{icon}\n\n{title}\n{description}"
+    return f"{title}\n{description}"
+
+
+def _render_option_card(
+    *,
+    button_key: str,
+    icon: str,
+    title: str,
+    description: str,
+    is_active: bool,
+    on_click: Callable[[], None],
+) -> None:
+    if st.button(
+        _option_card_label(icon, title, description),
+        key=button_key,
+        use_container_width=True,
+        type="primary" if is_active else "secondary",
+    ):
+        on_click()
+        st.rerun()
 
 
 def _render_hero() -> None:
@@ -56,29 +118,16 @@ def _render_mode_selector() -> None:
     current_mode = st.session_state.get("interview_mode", "Behavioral")
     col1, col2 = st.columns(2)
 
-    modes = [
-        ("Behavioral", "💬", "STAR-method stories, leadership & teamwork"),
-        ("Technical", "⚙️", "System design, coding concepts & problem solving"),
-    ]
-
-    for col, (mode, icon, desc) in zip((col1, col2), modes):
+    for col, (mode, key, icon, desc) in zip((col1, col2), _MODE_OPTIONS):
         with col:
-            is_active = current_mode == mode
-            card_class = "mode-card mode-card-active" if is_active else "mode-card"
-            st.markdown(
-                f"""
-                <div class="{card_class}">
-                    <div class="mode-icon">{icon}</div>
-                    <div class="mode-label">{mode}</div>
-                    <div class="mode-desc">{desc}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
+            _render_option_card(
+                button_key=key,
+                icon=icon,
+                title=mode,
+                description=desc,
+                is_active=current_mode == mode,
+                on_click=lambda m=mode: st.session_state.update(interview_mode=m),
             )
-            label = f"{'✓ ' if is_active else ''}{mode}"
-            if st.button(label, key=f"mode_{mode.lower()}", use_container_width=True):
-                st.session_state["interview_mode"] = mode
-                st.rerun()
 
 
 def _render_duration_selector() -> None:
@@ -88,15 +137,41 @@ def _render_duration_selector() -> None:
     )
 
     current_duration = st.session_state.get("interview_duration_minutes", 20)
-    cols = st.columns(len(DURATION_OPTIONS))
+    cols = st.columns(len(_DURATION_OPTIONS))
 
-    for col, duration in zip(cols, DURATION_OPTIONS):
+    for col, (duration, key, desc) in zip(cols, _DURATION_OPTIONS):
         with col:
-            is_active = current_duration == duration
-            label = f"{'✓ ' if is_active else ''}{duration} min"
-            if st.button(label, key=f"dur_{duration}", use_container_width=True):
-                st.session_state["interview_duration_minutes"] = duration
-                st.rerun()
+            _render_option_card(
+                button_key=key,
+                icon="⏱️",
+                title=f"{duration} min",
+                description=desc,
+                is_active=current_duration == duration,
+                on_click=lambda d=duration: st.session_state.update(
+                    interview_duration_minutes=d
+                ),
+            )
+
+
+def _render_input_selector() -> None:
+    _section_title(
+        "Response Method",
+        "How you'd like to answer during the interview.",
+    )
+
+    current_input = st.session_state.get("input_mode", "Audio + Text")
+    col1, col2 = st.columns(2)
+
+    for col, (mode, key, icon, desc) in zip((col1, col2), _INPUT_OPTIONS):
+        with col:
+            _render_option_card(
+                button_key=key,
+                icon=icon,
+                title=mode,
+                description=desc,
+                is_active=current_input == mode,
+                on_click=lambda m=mode: st.session_state.update(input_mode=m),
+            )
 
 
 def render_setup_view() -> None:
@@ -137,14 +212,7 @@ def render_setup_view() -> None:
         _render_duration_selector()
 
         st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
-        _section_title("Response Method", "How you'd like to answer during the interview.")
-        st.session_state["input_mode"] = st.radio(
-            "Input mode",
-            INPUT_MODES,
-            index=INPUT_MODES.index(st.session_state.get("input_mode", "Audio + Text")),
-            horizontal=True,
-            label_visibility="collapsed",
-        )
+        _render_input_selector()
 
         st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
 

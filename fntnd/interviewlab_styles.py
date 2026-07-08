@@ -17,9 +17,9 @@ html, body, [class*="css"] {
 .block-container {
     padding-top: 1.5rem;
     padding-bottom: 2rem;
-    max-width: 640px;
-    margin-left: auto;
-    margin-right: auto;
+    max-width: 100%;
+    padding-left: 2rem;
+    padding-right: 2rem;
 }
 
 .setup-section {
@@ -48,6 +48,55 @@ html, body, [class*="css"] {
 .block-container [data-testid="stRadio"] > div {
     justify-content: center;
     gap: 1.5rem;
+}
+
+/* Shared clickable option cards */
+[class*="st-key-mode_"] button,
+[class*="st-key-dur_"] button,
+[class*="st-key-input_"] button {
+    min-height: 132px;
+    height: auto !important;
+    padding: 1.1rem 0.85rem !important;
+    border-radius: 12px !important;
+    border: 2px solid #e2e8f0 !important;
+    background: #f8fafc !important;
+    color: #1e293b !important;
+    font-weight: 600 !important;
+    font-size: 0.88rem !important;
+    line-height: 1.4 !important;
+    white-space: pre-line !important;
+    box-shadow: none !important;
+    transition: all 0.2s ease !important;
+}
+
+[class*="st-key-dur_"] button {
+    min-height: 148px;
+    font-size: 0.82rem !important;
+}
+
+[class*="st-key-mode_"] button:hover,
+[class*="st-key-dur_"] button:hover,
+[class*="st-key-input_"] button:hover {
+    border-color: #a5b4fc !important;
+    background: #f5f3ff !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(99,102,241,0.12) !important;
+}
+
+[class*="st-key-mode_"] button[kind="primary"],
+[class*="st-key-dur_"] button[kind="primary"],
+[class*="st-key-input_"] button[kind="primary"] {
+    background: linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%) !important;
+    border: 2px solid #6366f1 !important;
+    color: #1e293b !important;
+    box-shadow: 0 0 0 3px rgba(99,102,241,0.15) !important;
+}
+
+[class*="st-key-mode_"] button[kind="primary"]:hover,
+[class*="st-key-dur_"] button[kind="primary"]:hover,
+[class*="st-key-input_"] button[kind="primary"]:hover {
+    background: linear-gradient(135deg, #e0e7ff 0%, #ede9fe 100%) !important;
+    border-color: #6366f1 !important;
 }
 
 .hero-section {
@@ -83,7 +132,7 @@ html, body, [class*="css"] {
 .hero-subtitle {
     font-size: 1.1rem;
     color: #64748b;
-    max-width: 540px;
+    max-width: 720px;
     margin: 0 auto;
     line-height: 1.6;
 }
