@@ -66,7 +66,7 @@ html, body, [class*="css"] {
     line-height: 1.4 !important;
     white-space: pre-line !important;
     box-shadow: none !important;
-    transition: all 0.2s ease !important;
+    transition: border-color 0.12s ease, background 0.12s ease !important;
 }
 
 [class*="st-key-dur_"] button {
@@ -79,24 +79,7 @@ html, body, [class*="css"] {
 [class*="st-key-input_"] button:hover {
     border-color: #a5b4fc !important;
     background: #f5f3ff !important;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(99,102,241,0.12) !important;
-}
-
-[class*="st-key-mode_"] button[kind="primary"],
-[class*="st-key-dur_"] button[kind="primary"],
-[class*="st-key-input_"] button[kind="primary"] {
-    background: linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%) !important;
-    border: 2px solid #6366f1 !important;
-    color: #1e293b !important;
-    box-shadow: 0 0 0 3px rgba(99,102,241,0.15) !important;
-}
-
-[class*="st-key-mode_"] button[kind="primary"]:hover,
-[class*="st-key-dur_"] button[kind="primary"]:hover,
-[class*="st-key-input_"] button[kind="primary"]:hover {
-    background: linear-gradient(135deg, #e0e7ff 0%, #ede9fe 100%) !important;
-    border-color: #6366f1 !important;
+    box-shadow: 0 2px 8px rgba(99,102,241,0.1) !important;
 }
 
 .hero-section {
@@ -133,8 +116,11 @@ html, body, [class*="css"] {
     font-size: 1.1rem;
     color: #64748b;
     max-width: 720px;
+    width: 100%;
     margin: 0 auto;
     line-height: 1.6;
+    text-align: center;
+    display: block;
 }
 
 .setup-card {

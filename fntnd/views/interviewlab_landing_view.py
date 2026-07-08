@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
 import streamlit as st
 
 _MODE_OPTIONS = [
     (
         "Behavioral",
         "mode_behavioral",
+        "interview_mode",
         "💬",
         "Practice STAR stories, teamwork, and leadership scenarios.",
     ),
     (
         "Technical",
         "mode_technical",
+        "interview_mode",
         "⚙️",
         "System design, coding concepts, and deep problem solving.",
     ),
@@ -32,12 +32,14 @@ _INPUT_OPTIONS = [
     (
         "Audio + Text",
         "input_audio_text",
+        "input_mode",
         "🎙️",
         "Speak your answers naturally, like a real interview. Text fallback included.",
     ),
     (
         "Text Only",
         "input_text_only",
+        "input_mode",
         "⌨️",
         "Type your responses — ideal for quiet spaces or focused practice.",
     ),
@@ -50,29 +52,49 @@ def _section_title(title: str, subtitle: str = "") -> None:
         st.caption(subtitle)
 
 
+def _set_session_value(key: str, value: object) -> None:
+    if st.session_state.get(key) != value:
+        st.session_state[key] = value
+
+
 def _option_card_label(icon: str, title: str, description: str) -> str:
     if icon:
         return f"{icon}\n\n{title}\n{description}"
     return f"{title}\n{description}"
 
 
+def _inject_active_card_style(active_button_key: str) -> None:
+    st.markdown(
+        f"""
+        <style>
+        .st-key-{active_button_key} button {{
+            background: linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%) !important;
+            border: 2px solid #6366f1 !important;
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.15) !important;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _render_option_card(
     *,
     button_key: str,
+    session_key: str,
+    session_value: object,
     icon: str,
     title: str,
     description: str,
-    is_active: bool,
-    on_click: Callable[[], None],
 ) -> None:
-    if st.button(
+    st.button(
         _option_card_label(icon, title, description),
         key=button_key,
         use_container_width=True,
-        type="primary" if is_active else "secondary",
-    ):
-        on_click()
-        st.rerun()
+        type="secondary",
+        on_click=_set_session_value,
+        kwargs={"key": session_key, "value": session_value},
+    )
 
 
 def _render_hero() -> None:
@@ -109,68 +131,74 @@ def _render_hero() -> None:
     )
 
 
-def _render_mode_selector() -> None:
+@st.fragment
+def _mode_selector_fragment() -> None:
     _section_title(
         "Interview Type",
         "Choose the style of practice that matches your upcoming interview.",
     )
 
     current_mode = st.session_state.get("interview_mode", "Behavioral")
-    col1, col2 = st.columns(2)
+    active_key = f"mode_{current_mode.lower()}"
+    _inject_active_card_style(active_key)
 
-    for col, (mode, key, icon, desc) in zip((col1, col2), _MODE_OPTIONS):
+    col1, col2 = st.columns(2)
+    for col, (mode, key, session_key, icon, desc) in zip((col1, col2), _MODE_OPTIONS):
         with col:
             _render_option_card(
                 button_key=key,
+                session_key=session_key,
+                session_value=mode,
                 icon=icon,
                 title=mode,
                 description=desc,
-                is_active=current_mode == mode,
-                on_click=lambda m=mode: st.session_state.update(interview_mode=m),
             )
 
 
-def _render_duration_selector() -> None:
+@st.fragment
+def _duration_selector_fragment() -> None:
     _section_title(
         "Interview Duration",
         "How long your mock interview will run.",
     )
 
     current_duration = st.session_state.get("interview_duration_minutes", 20)
-    cols = st.columns(len(_DURATION_OPTIONS))
+    _inject_active_card_style(f"dur_{current_duration}")
 
+    cols = st.columns(len(_DURATION_OPTIONS))
     for col, (duration, key, desc) in zip(cols, _DURATION_OPTIONS):
         with col:
             _render_option_card(
                 button_key=key,
+                session_key="interview_duration_minutes",
+                session_value=duration,
                 icon="⏱️",
                 title=f"{duration} min",
                 description=desc,
-                is_active=current_duration == duration,
-                on_click=lambda d=duration: st.session_state.update(
-                    interview_duration_minutes=d
-                ),
             )
 
 
-def _render_input_selector() -> None:
+@st.fragment
+def _input_selector_fragment() -> None:
     _section_title(
         "Response Method",
         "How you'd like to answer during the interview.",
     )
 
     current_input = st.session_state.get("input_mode", "Audio + Text")
-    col1, col2 = st.columns(2)
+    active_key = "input_audio_text" if current_input == "Audio + Text" else "input_text_only"
+    _inject_active_card_style(active_key)
 
-    for col, (mode, key, icon, desc) in zip((col1, col2), _INPUT_OPTIONS):
+    col1, col2 = st.columns(2)
+    for col, (mode, key, session_key, icon, desc) in zip((col1, col2), _INPUT_OPTIONS):
         with col:
             _render_option_card(
                 button_key=key,
+                session_key=session_key,
+                session_value=mode,
                 icon=icon,
                 title=mode,
                 description=desc,
-                is_active=current_input == mode,
-                on_click=lambda m=mode: st.session_state.update(input_mode=m),
             )
 
 
@@ -206,13 +234,13 @@ def render_setup_view() -> None:
         )
 
         st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
-        _render_mode_selector()
+        _mode_selector_fragment()
 
         st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
-        _render_duration_selector()
+        _duration_selector_fragment()
 
         st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
-        _render_input_selector()
+        _input_selector_fragment()
 
         st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
 
