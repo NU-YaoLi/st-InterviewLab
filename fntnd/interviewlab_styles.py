@@ -17,7 +17,37 @@ html, body, [class*="css"] {
 .block-container {
     padding-top: 1.5rem;
     padding-bottom: 2rem;
-    max-width: 960px;
+    max-width: 640px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.setup-section {
+    text-align: center;
+}
+
+.section-spacer {
+    height: 1.75rem;
+}
+
+/* Center Streamlit widgets inside the setup form */
+.block-container h4 {
+    text-align: center;
+    margin-bottom: 0.25rem;
+}
+
+.block-container .stCaption, .block-container [data-testid="stCaptionContainer"] {
+    text-align: center;
+}
+
+.block-container [data-testid="stRadio"] {
+    display: flex;
+    justify-content: center;
+}
+
+.block-container [data-testid="stRadio"] > div {
+    justify-content: center;
+    gap: 1.5rem;
 }
 
 .hero-section {

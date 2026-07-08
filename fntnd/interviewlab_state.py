@@ -23,8 +23,37 @@ def init_session_state() -> None:
         st.session_state.setdefault(key, default)
 
 
+def get_job_display_label(session: dict | Any = None) -> str:
+    """Short label for the job from session job details."""
+    if session is None:
+        session = st.session_state
+    details = (session.get("job_description") or "").strip()
+    if not details:
+        return "Mock Interview"
+    first_line = details.splitlines()[0].strip()
+    if len(first_line) > 48:
+        return first_line[:45] + "…"
+    return first_line or "Mock Interview"
+
+
 def get_api_key_from_session() -> str:
-    """Return the user-entered OpenAI API key from session state."""
+    """Return the OpenAI API key from Streamlit secrets or session fallback."""
+    try:
+        key = st.secrets.get("OPENAI_API_KEY", "")
+        if key:
+            return str(key).strip()
+    except (AttributeError, FileNotFoundError, KeyError):
+        pass
+
+    try:
+        openai_secrets = st.secrets.get("openai", {})
+        if isinstance(openai_secrets, dict):
+            key = openai_secrets.get("api_key", "")
+            if key:
+                return str(key).strip()
+    except (AttributeError, FileNotFoundError, KeyError):
+        pass
+
     return (st.session_state.get("openai_api_key") or "").strip()
 
 
@@ -89,14 +118,12 @@ def apply_state_to_session(state: InterviewState, session: dict[str, Any] | Any)
 def reset_runtime_session() -> None:
     """Reset interview runtime while preserving setup + API key."""
     preserved = {
-        "openai_api_key": st.session_state.get("openai_api_key", ""),
         "interview_mode": st.session_state.get("interview_mode"),
         "target_role": st.session_state.get("target_role"),
         "target_level": st.session_state.get("target_level"),
         "job_description": st.session_state.get("job_description"),
         "resume": st.session_state.get("resume"),
         "input_mode": st.session_state.get("input_mode"),
-        "ai_voice_enabled": st.session_state.get("ai_voice_enabled"),
         "interview_duration_minutes": st.session_state.get(
             "interview_duration_minutes", DEFAULT_DURATION_MINUTES
         ),

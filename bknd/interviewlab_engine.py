@@ -102,10 +102,9 @@ def reset_interview_state(state: InterviewState) -> None:
 def _context_block(ctx: InterviewContext) -> str:
     return (
         f"Interview mode: {ctx.mode}\n"
-        f"Target role: {ctx.target_role or 'Not specified'}\n"
-        f"Level: {ctx.target_level or 'Not specified'}\n"
         f"Total main questions: {ctx.total_questions}\n\n"
-        f"Job description:\n{ctx.job_description or '(none provided)'}\n\n"
+        f"Job details (title, level, description):\n"
+        f"{ctx.job_description or ctx.target_role or '(none provided)'}\n\n"
         f"Candidate resume/profile:\n{ctx.resume or '(none provided)'}"
     )
 

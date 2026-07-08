@@ -4,7 +4,7 @@ Central configuration constants for InterviewLab.
 Single source of truth for model ids, interview caps, system prompts, and
 evaluation rubrics. Imported by both ``bknd`` and ``fntnd`` modules.
 
-The OpenAI API key is **not** stored here — users enter it in the Streamlit UI.
+The OpenAI API key is read from Streamlit secrets — users do not enter it in the UI.
 """
 
 from __future__ import annotations

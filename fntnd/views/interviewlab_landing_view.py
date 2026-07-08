@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import streamlit as st
 
-from interviewlab_config import DURATION_OPTIONS, INPUT_MODES, INTERVIEW_MODES
+from interviewlab_config import DURATION_OPTIONS, INPUT_MODES
+
+
+def _section_title(title: str, subtitle: str = "") -> None:
+    st.markdown(f"#### {title}")
+    if subtitle:
+        st.caption(subtitle)
 
 
 def _render_hero() -> None:
@@ -42,12 +48,9 @@ def _render_hero() -> None:
 
 
 def _render_mode_selector() -> None:
-    st.markdown(
-        '<div class="setup-card">'
-        '<p class="setup-card-title">🧭 Interview Type</p>'
-        '<p class="setup-card-desc">Choose the style of practice that matches your upcoming interview.</p>'
-        '</div>',
-        unsafe_allow_html=True,
+    _section_title(
+        "Interview Type",
+        "Choose the style of practice that matches your upcoming interview.",
     )
 
     current_mode = st.session_state.get("interview_mode", "Behavioral")
@@ -79,12 +82,9 @@ def _render_mode_selector() -> None:
 
 
 def _render_duration_selector() -> None:
-    st.markdown(
-        '<div class="setup-card">'
-        '<p class="setup-card-title">⏱️ Interview Duration</p>'
-        '<p class="setup-card-desc">Set how long your mock interview will run — just like the real thing.</p>'
-        '</div>',
-        unsafe_allow_html=True,
+    _section_title(
+        "Interview Duration",
+        "How long your mock interview will run.",
     )
 
     current_duration = st.session_state.get("interview_duration_minutes", 20)
@@ -103,86 +103,51 @@ def render_setup_view() -> None:
     """Render the full setup form on the main page."""
     _render_hero()
 
-    st.markdown(
-        '<div class="setup-card">'
-        '<p class="setup-card-title">🔑 API Key</p>'
-        '<p class="setup-card-desc">Your key stays in this browser session only — never stored on our servers.</p>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-    st.session_state["openai_api_key"] = st.text_input(
-        "OpenAI API Key",
-        type="password",
-        value=st.session_state.get("openai_api_key", ""),
-        placeholder="sk-…",
-        label_visibility="collapsed",
-    )
-
-    st.markdown(
-        '<div class="setup-card">'
-        '<p class="setup-card-title">💼 Job Details</p>'
-        '<p class="setup-card-desc">Tell us about the role you\'re preparing for so questions are tailored to you.</p>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-
-    col_role, col_level = st.columns(2)
-    with col_role:
-        st.session_state["target_role"] = st.text_input(
-            "Job Title",
-            value=st.session_state.get("target_role", ""),
-            placeholder="e.g. Software Engineer, Data Analyst",
+    with st.container():
+        _section_title(
+            "Job Details",
+            "Paste the job title, level, and description — anything that helps tailor your questions.",
         )
-    with col_level:
-        st.session_state["target_level"] = st.text_input(
-            "Experience Level",
-            value=st.session_state.get("target_level", ""),
-            placeholder="e.g. Junior, Mid, Senior",
-        )
-
-    st.session_state["job_description"] = st.text_area(
-        "Job Description",
-        value=st.session_state.get("job_description", ""),
-        height=120,
-        placeholder="Paste the job description here — the more detail, the better the questions…",
-    )
-
-    st.session_state["resume"] = st.text_area(
-        "Your Resume / Background (optional)",
-        value=st.session_state.get("resume", ""),
-        height=100,
-        placeholder="Paste your resume or a brief summary of your experience…",
-    )
-
-    _render_mode_selector()
-    _render_duration_selector()
-
-    st.markdown(
-        '<div class="setup-card">'
-        '<p class="setup-card-title">🎙️ Response Method</p>'
-        '<p class="setup-card-desc">How you\'d like to answer during the interview.</p>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-
-    col_input, col_voice = st.columns(2)
-    with col_input:
-        st.session_state["input_mode"] = st.radio(
-            "Input Mode",
-            INPUT_MODES,
-            index=INPUT_MODES.index(st.session_state.get("input_mode", "Audio + Text")),
+        job_details = st.text_area(
+            "Job details",
+            value=st.session_state.get("job_description", ""),
+            height=140,
+            placeholder=(
+                "e.g. Senior Software Engineer (Mid-Senior)\n\n"
+                "We are looking for a backend engineer experienced in Python, "
+                "distributed systems, and cloud infrastructure…"
+            ),
             label_visibility="collapsed",
         )
-    with col_voice:
-        st.session_state["ai_voice_enabled"] = st.toggle(
-            "AI speaks questions aloud (TTS)",
-            value=st.session_state.get("ai_voice_enabled", True),
+        st.session_state["job_description"] = job_details
+        st.session_state["target_role"] = ""
+        st.session_state["target_level"] = ""
+
+        st.session_state["resume"] = st.text_area(
+            "Your background (optional)",
+            value=st.session_state.get("resume", ""),
+            height=80,
+            placeholder="Paste your resume or a brief summary of your experience…",
         )
 
-    st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
+        _render_mode_selector()
 
-    _, btn_col, _ = st.columns([1, 2, 1])
-    with btn_col:
+        st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
+        _render_duration_selector()
+
+        st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
+        _section_title("Response Method", "How you'd like to answer during the interview.")
+        st.session_state["input_mode"] = st.radio(
+            "Input mode",
+            INPUT_MODES,
+            index=INPUT_MODES.index(st.session_state.get("input_mode", "Audio + Text")),
+            horizontal=True,
+            label_visibility="collapsed",
+        )
+
+        st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
+
         if st.button("Begin Mock Interview →", type="primary", use_container_width=True):
             st.session_state["_start_requested"] = True
 

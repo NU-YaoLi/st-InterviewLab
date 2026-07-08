@@ -7,7 +7,7 @@ import streamlit as st
 from bknd.interviewlab_evaluator import get_dimension_labels, run_evaluation
 from bknd.interviewlab_openai import get_openai_client
 from fntnd.interviewlab_errors import display_openai_error
-from fntnd.interviewlab_state import apply_state_to_session, get_api_key_from_session, state_from_session
+from fntnd.interviewlab_state import apply_state_to_session, get_api_key_from_session, get_job_display_label, state_from_session
 from fntnd.views.interviewlab_interview_view import render_chat_history
 
 
@@ -22,7 +22,7 @@ def render_evaluation_view() -> None:
     mode = st.session_state.get("interview_mode", "Behavioral")
     labels = get_dimension_labels(mode)
     overall = results.get("overall_score", 0)
-    role = st.session_state.get("target_role", "N/A")
+    role = get_job_display_label(st.session_state)
     duration = st.session_state.get("interview_duration_minutes", 20)
     responses = st.session_state.get("responses", [])
 

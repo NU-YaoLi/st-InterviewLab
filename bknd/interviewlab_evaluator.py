@@ -108,7 +108,7 @@ def evaluate_turn(
     ctx = state.to_context()
     user_content = (
         f"Mode: {ctx.mode}\n"
-        f"Role: {ctx.target_role} | Level: {ctx.target_level}\n\n"
+        f"Job details:\n{ctx.job_description or '(none)'}\n\n"
         f"Latest question:\n{latest_question}\n\n"
         f"Latest answer:\n{latest_answer}\n\n"
         f"Prior transcript:\n{_format_transcript(state)}"
@@ -123,8 +123,7 @@ def evaluate_full_interview(
     ctx = state.to_context()
     user_content = (
         f"Mode: {ctx.mode}\n"
-        f"Role: {ctx.target_role} | Level: {ctx.target_level}\n\n"
-        f"Job description:\n{ctx.job_description or '(none)'}\n\n"
+        f"Job details:\n{ctx.job_description or '(none)'}\n\n"
         f"Resume:\n{ctx.resume or '(none)'}\n\n"
         f"Full interview transcript:\n{_format_transcript(state)}"
     )

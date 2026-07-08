@@ -27,10 +27,10 @@ from fntnd.views.interviewlab_landing_view import render_setup_view
 
 def _handle_start_interview(api_key: str) -> None:
     if not api_key:
-        st.error("Please enter your OpenAI API key to begin.")
+        st.error("OpenAI API key is not configured. Add OPENAI_API_KEY to Streamlit secrets.")
         return
-    if not st.session_state.get("target_role", "").strip():
-        st.error("Please enter a job title.")
+    if not st.session_state.get("job_description", "").strip():
+        st.error("Please enter job details before starting.")
         return
 
     try:
@@ -65,7 +65,7 @@ def main() -> None:
     elif interview_active:
         api_key = get_api_key_from_session()
         if not api_key:
-            st.error("Your API key was cleared. Please go back and re-enter it.")
+            st.error("OpenAI API key is not configured. Add OPENAI_API_KEY to Streamlit secrets.")
             if st.button("Back to Setup"):
                 reset_runtime_session()
                 st.rerun()
@@ -75,10 +75,7 @@ def main() -> None:
         render_setup_view()
 
         if not interview_active and not interview_complete:
-            with st.container():
-                st.markdown("<br>", unsafe_allow_html=True)
-                _, reset_col, _ = st.columns([3, 1, 3])
-                with reset_col:
-                    if st.button("Reset", use_container_width=True):
-                        reset_runtime_session()
-                        st.rerun()
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("Reset", use_container_width=True):
+                reset_runtime_session()
+                st.rerun()

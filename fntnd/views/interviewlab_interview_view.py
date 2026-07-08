@@ -19,7 +19,7 @@ from bknd.interviewlab_engine import (
 from bknd.interviewlab_evaluator import run_evaluation
 from bknd.interviewlab_openai import get_openai_client
 from fntnd.interviewlab_errors import display_openai_error
-from fntnd.interviewlab_state import apply_state_to_session, state_from_session
+from fntnd.interviewlab_state import apply_state_to_session, get_job_display_label, state_from_session
 from interviewlab_config import PER_TURN_EVALUATION
 
 
@@ -73,7 +73,7 @@ def _timer_fragment(api_key: str) -> None:
     remaining = get_remaining_seconds(state)
     timer_cls = _timer_class(remaining)
     mode = st.session_state.get("interview_mode", "Behavioral")
-    role = st.session_state.get("target_role", "")
+    role = get_job_display_label(st.session_state)
     duration = st.session_state.get("interview_duration_minutes", 20)
 
     st.markdown(

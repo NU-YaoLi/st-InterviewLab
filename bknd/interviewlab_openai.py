@@ -1,8 +1,8 @@
 """
 OpenAI client factory for InterviewLab.
 
-The API key is supplied by the Streamlit UI (``st.session_state``) and passed
-into every backend call — it is never read from code, secrets, or env vars.
+The API key is read from Streamlit secrets (``OPENAI_API_KEY`` or
+``openai.api_key``) and passed into backend calls.
 """
 
 from __future__ import annotations
@@ -11,10 +11,10 @@ from openai import OpenAI
 
 
 def get_openai_client(api_key: str) -> OpenAI:
-    """Create an OpenAI client from a user-provided key."""
+    """Create an OpenAI client from the configured API key."""
     key = (api_key or "").strip()
     if not key:
         raise ValueError(
-            "OpenAI API key is required. Enter your key in the sidebar to continue."
+            "OpenAI API key is required. Add OPENAI_API_KEY to Streamlit secrets."
         )
     return OpenAI(api_key=key)
