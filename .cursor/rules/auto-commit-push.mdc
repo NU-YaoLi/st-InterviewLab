@@ -5,12 +5,15 @@ alwaysApply: true
 
 # Auto-commit and push
 
-After making any code changes in this repository:
+After making any code changes in this repository, run these three commands in order:
 
-1. Stage all relevant changed files (do not commit secrets such as `.env` or `.streamlit/secrets.toml`).
-2. Create a concise commit with a message focused on **why** the change was made.
-3. Push to the tracked remote branch (`git push` or `git push -u origin HEAD` if needed).
+```bash
+git add .
+git commit -m "<concise summary of the changes we made>"
+git push
+```
 
-Do this automatically at the end of each task — the user does not need to ask separately.
-
-If push fails (e.g. network), report the failure and leave the commit local.
+- Use one `main` branch only — always push to the remote.
+- Stage everything with `git add .`; the user manages exclusions via `.gitignore`.
+- Do this automatically at the end of each task — the user does not need to ask separately.
+- If push fails (e.g. network), report the failure and leave the commit local.
