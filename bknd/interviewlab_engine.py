@@ -16,14 +16,7 @@ from typing import Any
 from openai import OpenAI, OpenAIError
 
 from bknd.interviewlab_openai import create_chat_completion
-from interviewlab_config import (
-    DEFAULT_DURATION_MINUTES,
-    FOLLOW_UP_SYSTEM_PROMPT,
-    INTERVIEWLAB_MODEL,
-    TOTAL_QUESTIONS,
-    get_system_prompt,
-    questions_for_duration,
-)
+from bknd.interviewlab_language import NON_ENGLISH_INTERVIEWER_REMINDER, is_english_text
 
 
 @dataclass
@@ -49,8 +42,7 @@ class InterviewState:
     target_level: str = ""
     job_description: str = ""
     resume: str = ""
-    input_mode: str = "Audio + Text"
-    ai_voice_enabled: bool = False
+    ai_voice_enabled: bool = True
     chat_history: list[dict[str, str]] = field(default_factory=list)
     current_question_index: int = 0
     total_questions: int = TOTAL_QUESTIONS
@@ -184,7 +176,8 @@ def start_interview(state: InterviewState, client: OpenAI) -> str:
     instruction = (
         f"This is question 1 of approximately {state.total_questions}. "
         f"The interview is {state.interview_duration_minutes} minutes long. "
-        "Welcome the candidate warmly and ask the first interview question."
+        "Welcome the candidate warmly, note this is an English voice mock interview, "
+        "and ask the first interview question."
     )
     question = _call_llm(client, _build_messages(state, instruction=instruction), temperature=0.8)
 
@@ -282,6 +275,16 @@ def process_user_response(
         raise ValueError("Please provide an answer before submitting.")
 
     add_message(state, "user", user_answer)
+
+    if not is_english_text(user_answer):
+        reminder = NON_ENGLISH_INTERVIEWER_REMINDER
+        add_message(state, "assistant", reminder)
+        return {
+            "action": "language_reminder",
+            "message": reminder,
+            "user_answer": user_answer,
+        }
+
     state.responses.append(
         {
             "question": state.current_question_text,

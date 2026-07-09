@@ -52,8 +52,7 @@ html, body, [class*="css"] {
 
 /* Shared clickable option cards */
 [class*="st-key-mode_"] button,
-[class*="st-key-dur_"] button,
-[class*="st-key-input_"] button {
+[class*="st-key-dur_"] button {
     min-height: 132px;
     height: auto !important;
     padding: 1.1rem 0.85rem !important;
@@ -75,8 +74,7 @@ html, body, [class*="css"] {
 }
 
 [class*="st-key-mode_"] button:hover,
-[class*="st-key-dur_"] button:hover,
-[class*="st-key-input_"] button:hover {
+[class*="st-key-dur_"] button:hover {
     border-color: #a5b4fc !important;
     background: #f5f3ff !important;
     box-shadow: 0 2px 8px rgba(99,102,241,0.1) !important;
@@ -86,6 +84,16 @@ html, body, [class*="css"] {
     text-align: center;
     padding: 2.5rem 1rem 2rem;
     margin-bottom: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.hero-subtitle-wrap {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    margin-bottom: 0.25rem;
 }
 
 .hero-badge {
@@ -117,10 +125,9 @@ html, body, [class*="css"] {
     color: #64748b;
     max-width: 720px;
     width: 100%;
-    margin: 0 auto;
+    margin: 0;
     line-height: 1.6;
     text-align: center;
-    display: block;
 }
 
 .setup-card {

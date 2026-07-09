@@ -48,6 +48,7 @@ def _handle_start_interview(api_key: str) -> None:
     try:
         client = get_openai_client(api_key)
         state = state_from_session(st.session_state)
+        state.ai_voice_enabled = True
         first_message = start_interview(state, client)
         state.last_tts_audio = synthesize_if_enabled(
             client, first_message, state.ai_voice_enabled

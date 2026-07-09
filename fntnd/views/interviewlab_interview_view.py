@@ -1,4 +1,4 @@
-"""Active interview view with timer and streamlined input."""
+"""Active interview view — English voice-only conversation."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from bknd.interviewlab_engine import (
     process_user_response,
 )
 from bknd.interviewlab_evaluator import run_evaluation
+from bknd.interviewlab_language import NON_ENGLISH_UI_MESSAGE, is_english_text
 from bknd.interviewlab_openai import get_openai_client
 from fntnd.interviewlab_errors import display_openai_error
 from fntnd.interviewlab_state import apply_state_to_session, get_job_display_label, state_from_session
@@ -43,7 +44,11 @@ def _read_audio_input(key: str = "candidate_audio") -> bytes | None:
     if not hasattr(st, "audio_input"):
         return None
 
-    audio_value = st.audio_input("Record your answer", key=key, label_visibility="collapsed")
+    audio_value = st.audio_input(
+        "Record your answer in English",
+        key=key,
+        label_visibility="collapsed",
+    )
     if audio_value is None:
         return None
     if hasattr(audio_value, "read"):
@@ -82,7 +87,7 @@ def _timer_fragment(api_key: str) -> None:
             <div>
                 <div class="interview-header-title">{mode} Interview · {role}</div>
                 <div class="status-badge" style="margin-top:0.5rem">
-                    <span class="status-dot"></span> Live
+                    <span class="status-dot"></span> Live · English voice
                 </div>
             </div>
             <div style="text-align:right">
@@ -167,40 +172,46 @@ def render_interview_view(api_key: str) -> None:
 
     st.markdown(
         '<p style="color:#64748b;font-size:0.85rem;text-align:center;margin:1rem 0">'
-        'Respond naturally — type your answer or record audio below. '
+        'Speak your answers in English using the microphone below. '
         'The interview continues automatically after each response.</p>',
         unsafe_allow_html=True,
     )
 
-    _render_response_input(api_key)
+    _render_voice_input(api_key)
 
 
-def _render_response_input(api_key: str) -> None:
-    input_mode = st.session_state.get("input_mode", "Audio + Text")
-
-    text_answer = st.chat_input("Type your answer here…")
-
-    audio_bytes = None
-    if input_mode == "Audio + Text":
-        audio_bytes = _read_audio_input()
-
-    if text_answer:
-        _process_answer(api_key, text_answer)
+def _render_voice_input(api_key: str) -> None:
+    if not hasattr(st, "audio_input"):
+        st.error(
+            "Voice interviews require Streamlit >= 1.33 with microphone support. "
+            "Please upgrade Streamlit and allow microphone access in your browser."
+        )
         return
 
-    if audio_bytes and input_mode == "Audio + Text":
-        audio_hash = _audio_hash(audio_bytes)
-        last_hash = st.session_state.get("last_audio_hash")
+    st.caption("🎙️ Record your answer in English")
+    audio_bytes = _read_audio_input()
 
-        if audio_hash != last_hash:
-            st.session_state["last_audio_hash"] = audio_hash
-            try:
-                client = get_openai_client(api_key)
-                with st.spinner("Transcribing your response…"):
-                    transcribed = transcribe_audio_bytes(client, audio_bytes)
-                if transcribed.strip():
-                    _process_answer(api_key, transcribed)
-                else:
-                    st.warning("Couldn't detect speech. Please try again or type your answer.")
-            except Exception as exc:
-                display_openai_error(exc)
+    if not audio_bytes:
+        return
+
+    audio_hash = _audio_hash(audio_bytes)
+    last_hash = st.session_state.get("last_audio_hash")
+
+    if audio_hash == last_hash:
+        return
+
+    st.session_state["last_audio_hash"] = audio_hash
+    try:
+        client = get_openai_client(api_key)
+        with st.spinner("Transcribing your response…"):
+            transcribed = transcribe_audio_bytes(client, audio_bytes)
+        if not transcribed.strip():
+            st.warning("Couldn't detect speech. Please try again and speak clearly in English.")
+            return
+        if not is_english_text(transcribed):
+            st.warning(NON_ENGLISH_UI_MESSAGE)
+            _process_answer(api_key, transcribed)
+            return
+        _process_answer(api_key, transcribed)
+    except Exception as exc:
+        display_openai_error(exc)

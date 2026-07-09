@@ -50,7 +50,9 @@ MINUTES_PER_QUESTION = 4
 PER_TURN_EVALUATION = False
 
 INTERVIEW_MODES = ("Behavioral", "Technical")
-INPUT_MODES = ("Audio + Text", "Text Only")
+
+# Voice-only spoken interviews (English).
+SUPPORTED_INTERVIEW_LANGUAGE = "English"
 
 # Default session keys — mirrored by ``fntnd.interviewlab_state.init_session_state``.
 SESSION_DEFAULTS: dict[str, Any] = {
@@ -62,8 +64,7 @@ SESSION_DEFAULTS: dict[str, Any] = {
     "target_level": "",
     "job_description": "",
     "resume": "",
-    "input_mode": "Audio + Text",
-    "ai_voice_enabled": False,
+    "ai_voice_enabled": True,
     "chat_history": [],
     "current_question_index": 0,
     "total_questions": TOTAL_QUESTIONS,
@@ -86,7 +87,14 @@ SESSION_DEFAULTS: dict[str, Any] = {
 # System prompts
 # -------------------
 
-BEHAVIORAL_SYSTEM_PROMPT = """You are an experienced HR Manager / Hiring Manager conducting a realistic behavioral mock interview.
+ENGLISH_ONLY_RULE = """
+Language (required):
+- Conduct this mock interview entirely in English.
+- The candidate is practicing for English-language job interviews.
+- If the candidate responds in another language, politely remind them to answer in English and repeat your last question without advancing.
+"""
+
+BEHAVIORAL_SYSTEM_PROMPT = """You are an experienced HR Manager / Hiring Manager conducting a realistic behavioral mock interview in English.
 
 Your goals:
 1. Ask one clear behavioral question at a time, tailored to the candidate's target role, level, job description, and resume.
@@ -103,9 +111,9 @@ Rules:
 - Do not reveal scoring criteria during the interview.
 - Reference the candidate's background when relevant.
 - Keep the conversation flowing like a real interview — natural transitions between questions.
-"""
+""" + ENGLISH_ONLY_RULE
 
-TECHNICAL_SYSTEM_PROMPT = """You are a Technical Lead conducting a realistic technical mock interview.
+TECHNICAL_SYSTEM_PROMPT = """You are a Technical Lead conducting a realistic technical mock interview in English.
 
 Your goals:
 1. Ask one clear technical question at a time based on the target role, level, job description, and resume.
@@ -122,9 +130,9 @@ Rules:
 - Do not reveal scoring criteria during the interview.
 - Scale difficulty to the stated level (Junior / Mid / Senior).
 - Keep the conversation flowing like a real interview — natural transitions between questions.
-"""
+""" + ENGLISH_ONLY_RULE
 
-FOLLOW_UP_SYSTEM_PROMPT = """You are reviewing the candidate's latest answer during a mock interview.
+FOLLOW_UP_SYSTEM_PROMPT = """You are reviewing the candidate's latest answer during an English-only mock interview.
 
 Determine whether a follow-up is needed:
 - Behavioral mode: check STAR completeness (Situation, Task, Action, Result).

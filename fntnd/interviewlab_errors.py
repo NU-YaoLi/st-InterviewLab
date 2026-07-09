@@ -66,7 +66,7 @@ def display_openai_error(exc: Exception) -> None:
             )
         elif "audio" in msg or "transcription" in msg:
             st.error(
-                "**Audio error.** Could not process the recording. Try again or switch to Text Only mode."
+                "**Audio error.** Could not process the recording. Try again and speak clearly in English."
             )
         else:
             st.error("**Bad request.** OpenAI rejected the request payload.")

@@ -67,8 +67,7 @@ def state_from_session(session: dict[str, Any] | Any) -> InterviewState:
         target_level=session.get("target_level", ""),
         job_description=session.get("job_description", ""),
         resume=session.get("resume", ""),
-        input_mode=session.get("input_mode", "Audio + Text"),
-        ai_voice_enabled=session.get("ai_voice_enabled", False),
+        ai_voice_enabled=session.get("ai_voice_enabled", True),
         chat_history=list(session.get("chat_history", [])),
         current_question_index=session.get("current_question_index", 0),
         total_questions=session.get("total_questions", TOTAL_QUESTIONS),
@@ -97,7 +96,6 @@ def apply_state_to_session(state: InterviewState, session: dict[str, Any] | Any)
     session["target_level"] = state.target_level
     session["job_description"] = state.job_description
     session["resume"] = state.resume
-    session["input_mode"] = state.input_mode
     session["ai_voice_enabled"] = state.ai_voice_enabled
     session["chat_history"] = state.chat_history
     session["current_question_index"] = state.current_question_index
@@ -123,7 +121,6 @@ def reset_runtime_session() -> None:
         "target_level": st.session_state.get("target_level"),
         "job_description": st.session_state.get("job_description"),
         "resume": st.session_state.get("resume"),
-        "input_mode": st.session_state.get("input_mode"),
         "interview_duration_minutes": st.session_state.get(
             "interview_duration_minutes", DEFAULT_DURATION_MINUTES
         ),

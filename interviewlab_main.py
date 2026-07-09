@@ -38,7 +38,7 @@ _REQUIRED_CONFIG_NAMES = (
     "MINUTES_PER_QUESTION",
     "PER_TURN_EVALUATION",
     "INTERVIEW_MODES",
-    "INPUT_MODES",
+    "SUPPORTED_INTERVIEW_LANGUAGE",
     "SESSION_DEFAULTS",
     "get_system_prompt",
     "get_rubric",
@@ -136,6 +136,7 @@ _reinforce_config()
 _load_module("bknd.interviewlab_openai", _root / "bknd" / "interviewlab_openai.py")
 _load_module("bknd.interviewlab_audio", _root / "bknd" / "interviewlab_audio.py")
 _reinforce_config()
+_load_module("bknd.interviewlab_language", _root / "bknd" / "interviewlab_language.py")
 _load_module("bknd.interviewlab_engine", _root / "bknd" / "interviewlab_engine.py")
 _reinforce_config()
 _load_module("bknd.interviewlab_evaluator", _root / "bknd" / "interviewlab_evaluator.py")

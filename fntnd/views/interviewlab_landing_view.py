@@ -28,23 +28,6 @@ _DURATION_OPTIONS = [
     (45, "dur_45", "Full simulation — the most thorough, mastery-level mock interview."),
 ]
 
-_INPUT_OPTIONS = [
-    (
-        "Audio + Text",
-        "input_audio_text",
-        "input_mode",
-        "🎙️",
-        "Speak your answers naturally, like a real interview. Text fallback included.",
-    ),
-    (
-        "Text Only",
-        "input_text_only",
-        "input_mode",
-        "⌨️",
-        "Type your responses — ideal for quiet spaces or focused practice.",
-    ),
-]
-
 
 def _section_title(title: str, subtitle: str = "") -> None:
     st.markdown(f"#### {title}")
@@ -103,10 +86,12 @@ def _render_hero() -> None:
         <div class="hero-section">
             <div class="hero-badge">AI-Powered Practice</div>
             <h1 class="hero-title">Mock Interview Lab</h1>
-            <p class="hero-subtitle">
-                Prepare for your next opportunity with a realistic, timed mock interview
-                tailored to your target role — behavioral or technical.
-            </p>
+            <div class="hero-subtitle-wrap">
+                <p class="hero-subtitle">
+                    Prepare for your next opportunity with a realistic, timed mock interview
+                    tailored to your target role — behavioral or technical.
+                </p>
+            </div>
             <div class="feature-row">
                 <div class="feature-item">
                     <div class="feature-icon">🎯</div>
@@ -118,7 +103,7 @@ def _render_hero() -> None:
                 </div>
                 <div class="feature-item">
                     <div class="feature-icon">🎙️</div>
-                    <div class="feature-text">Voice or text answers</div>
+                    <div class="feature-text">English voice practice</div>
                 </div>
                 <div class="feature-item">
                     <div class="feature-icon">📊</div>
@@ -178,30 +163,6 @@ def _duration_selector_fragment() -> None:
             )
 
 
-@st.fragment
-def _input_selector_fragment() -> None:
-    _section_title(
-        "Response Method",
-        "How you'd like to answer during the interview.",
-    )
-
-    current_input = st.session_state.get("input_mode", "Audio + Text")
-    active_key = "input_audio_text" if current_input == "Audio + Text" else "input_text_only"
-    _inject_active_card_style(active_key)
-
-    col1, col2 = st.columns(2)
-    for col, (mode, key, session_key, icon, desc) in zip((col1, col2), _INPUT_OPTIONS):
-        with col:
-            _render_option_card(
-                button_key=key,
-                session_key=session_key,
-                session_value=mode,
-                icon=icon,
-                title=mode,
-                description=desc,
-            )
-
-
 def render_setup_view() -> None:
     """Render the full setup form on the main page."""
     _render_hero()
@@ -240,12 +201,10 @@ def render_setup_view() -> None:
         _duration_selector_fragment()
 
         st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
-        _input_selector_fragment()
-
-        st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
 
         if st.button("Begin Mock Interview →", type="primary", use_container_width=True):
             st.session_state["_start_requested"] = True
+            st.session_state["ai_voice_enabled"] = True
 
 
 def render_landing_view() -> None:

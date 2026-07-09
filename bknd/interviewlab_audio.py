@@ -45,10 +45,10 @@ def transcribe_audio(client: OpenAI, audio_path: Path) -> str:
         for model in models:
             try:
                 with open(audio_path, "rb") as audio_file:
-                    response = client.audio.transcriptions.create(
-                        model=model,
-                        file=audio_file,
-                    )
+                    kwargs: dict = {"model": model, "file": audio_file}
+                    if model != WHISPER_FALLBACK_MODEL:
+                        kwargs["language"] = "en"
+                    response = client.audio.transcriptions.create(**kwargs)
                 text = (response.text or "").strip()
                 if not text:
                     raise ValueError("Transcription returned empty text. Please try again.")
