@@ -24,6 +24,7 @@ def render_realtime_interview(
     session_id: int,
     disconnect: bool,
     key: str,
+    silence_seconds: int = 5,
 ) -> dict | None:
     """Render the Realtime WebRTC client and return transcript / status updates."""
     if realtime_interview is None:
@@ -35,6 +36,7 @@ def render_realtime_interview(
         ephemeral_key=ephemeral_key,
         session_id=session_id,
         disconnect=disconnect,
+        silence_seconds=silence_seconds,
         key=key,
         default=None,
     )

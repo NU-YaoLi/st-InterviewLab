@@ -9,6 +9,7 @@ import httpx
 from bknd.interviewlab_engine import InterviewState, context_block, reset_interview_state
 from interviewlab_config import (
     REALTIME_MODEL,
+    REALTIME_SILENCE_DURATION_MS,
     REALTIME_VOICE,
     get_system_prompt,
     questions_for_duration,
@@ -51,6 +52,10 @@ def build_realtime_session_config(state: InterviewState) -> dict[str, Any]:
                         "type": "server_vad",
                         "create_response": True,
                         "interrupt_response": True,
+                    # Wait before treating the candidate's turn as finished.
+                        "silence_duration_ms": REALTIME_SILENCE_DURATION_MS,
+                        "prefix_padding_ms": 300,
+                        "threshold": 0.5,
                     },
                 },
                 "output": {

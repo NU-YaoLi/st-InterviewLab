@@ -27,6 +27,8 @@ INTERVIEWLAB_MODEL = "gpt-5-mini"
 # Live mock interview — OpenAI Realtime voice agent (WebRTC).
 REALTIME_MODEL = "gpt-realtime-2.1"
 REALTIME_VOICE = "alloy"
+# Silence before the interviewer treats your answer as finished (server VAD).
+REALTIME_SILENCE_DURATION_MS = 5000
 
 # Legacy audio models (unused by the live Realtime path; kept for reference).
 WHISPER_MODEL = "gpt-4o-transcribe"

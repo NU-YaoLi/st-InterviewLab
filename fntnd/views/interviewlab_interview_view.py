@@ -18,6 +18,7 @@ from bknd.interviewlab_realtime import finalize_realtime_interview, sync_transcr
 from fntnd.interviewlab_errors import display_openai_error
 from fntnd.interviewlab_realtime_component import render_realtime_interview
 from fntnd.interviewlab_state import apply_state_to_session, get_job_display_label, state_from_session
+from interviewlab_config import REALTIME_SILENCE_DURATION_MS
 
 
 def render_chat_history() -> None:
@@ -315,10 +316,12 @@ def render_interview_view(api_key: str) -> None:
     session_id = int(st.session_state.get("realtime_session_id") or 1)
 
     # Stable widget key for the whole interview — remounts must not mint a new key.
+    silence_secs = max(1, int(round(REALTIME_SILENCE_DURATION_MS / 1000)))
     payload = render_realtime_interview(
         ephemeral_key=str(ephemeral),
         session_id=session_id,
         disconnect=disconnect,
+        silence_seconds=silence_secs,
         key="realtime_live_session",
     )
     _apply_realtime_payload(payload)
@@ -334,8 +337,11 @@ def render_interview_view(api_key: str) -> None:
     if err:
         st.error(err)
 
+    silence_secs = max(1, int(round(REALTIME_SILENCE_DURATION_MS / 1000)))
     st.markdown(
-        '<p class="mic-active-hint">🎙️ Live Realtime interview — speak naturally. '
-        "Your interviewer will respond in real time. Use <strong>End Interview</strong> when finished.</p>",
+        f'<p class="mic-active-hint">🎙️ Live Realtime interview — speak naturally. '
+        f"Tip: stay quiet for <strong>{silence_secs} seconds</strong> when you finish an answer "
+        "and the interviewer will continue. "
+        "Use <strong>End Interview</strong> when you want to stop the session.</p>",
         unsafe_allow_html=True,
     )
