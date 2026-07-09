@@ -2,7 +2,6 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <script src="streamlit-bridge.js"></script>
   <style>
     body {
       margin: 0;
@@ -42,6 +41,75 @@
     <div id="mic-status">Microphone standby</div>
   </div>
   <script>
+    (function () {
+      const RENDER = "streamlit:render";
+      const COMPONENT_READY = "streamlit:componentReady";
+      const SET_FRAME_HEIGHT = "streamlit:setFrameHeight";
+      const SET_COMPONENT_VALUE = "streamlit:setComponentValue";
+      const API_VERSION = 1;
+
+      const listeners = {};
+      let registeredMessageListener = false;
+
+      function addEventListener(type, callback) {
+        if (!listeners[type]) {
+          listeners[type] = [];
+        }
+        listeners[type].push(callback);
+      }
+
+      function dispatchEvent(type, event) {
+        (listeners[type] || []).forEach((callback) => callback(event));
+      }
+
+      function sendBackMsg(type, data) {
+        window.parent.postMessage(
+          Object.assign({ isStreamlitMessage: true, type: type }, data),
+          "*"
+        );
+      }
+
+      function onRenderMessage(data) {
+        const args = data && data.args ? data.args : {};
+        dispatchEvent(RENDER, {
+          detail: {
+            disabled: Boolean(data && data.disabled),
+            args: args,
+            theme: data && data.theme,
+          },
+        });
+      }
+
+      function onMessageEvent(event) {
+        const data = event.data;
+        if (!data || data.type !== RENDER) {
+          return;
+        }
+        onRenderMessage(data);
+      }
+
+      window.Streamlit = {
+        RENDER_EVENT: RENDER,
+        events: { addEventListener: addEventListener, dispatchEvent: dispatchEvent },
+        setComponentReady: function () {
+          if (!registeredMessageListener) {
+            window.addEventListener("message", onMessageEvent);
+            registeredMessageListener = true;
+          }
+          sendBackMsg(COMPONENT_READY, { apiVersion: API_VERSION });
+        },
+        setFrameHeight: function (height) {
+          if (height === undefined) {
+            height = document.body.scrollHeight;
+          }
+          sendBackMsg(SET_FRAME_HEIGHT, { height: height });
+        },
+        setComponentValue: function (value) {
+          sendBackMsg(SET_COMPONENT_VALUE, { value: value, dataType: "json" });
+        },
+      };
+    })();
+
     const Streamlit = window.Streamlit;
     const statusEl = document.getElementById("mic-status");
     const dotEl = document.getElementById("mic-dot");
@@ -127,7 +195,7 @@
         if (!hasSpoken) {
           openMs += CHECK_INTERVAL_MS;
           const remaining = Math.max(0, Math.ceil((silenceLimitMs - openMs) / 1000));
-          setStatus(`Listening… speak now (${remaining}s until next question)`, true);
+          setStatus("Listening… speak now (" + remaining + "s until next question)", true);
           if (openMs >= silenceLimitMs) {
             clearInterval(monitorTimer);
             monitorTimer = null;
@@ -138,7 +206,7 @@
 
         silenceMs += CHECK_INTERVAL_MS;
         const remaining = Math.max(0, Math.ceil((silenceLimitMs - silenceMs) / 1000));
-        setStatus(`Listening… auto-continue in ${remaining}s if you stay quiet`, true);
+        setStatus("Listening… auto-continue in " + remaining + "s if you stay quiet", true);
         if (silenceMs >= silenceLimitMs) {
           finishRecording(sessionId);
         }
@@ -167,7 +235,7 @@
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
         ? "audio/webm;codecs=opus"
         : "audio/webm";
-      mediaRecorder = new MediaRecorder(mediaStream, { mimeType });
+      mediaRecorder = new MediaRecorder(mediaStream, { mimeType: mimeType });
       mediaRecorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) chunks.push(event.data);
       };
@@ -213,7 +281,7 @@
       const stopNow = !!args.stop_now;
       const silenceSeconds = Number(args.silence_seconds || 15);
       const silenceLimitMs = Math.max(3000, silenceSeconds * 1000);
-      const autoStartKey = `${autoStart}|${stopNow}|${silenceSeconds}`;
+      const autoStartKey = autoStart + "|" + stopNow + "|" + silenceSeconds;
 
       attachMessageListener();
       Streamlit.setFrameHeight(56);

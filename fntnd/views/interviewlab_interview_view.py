@@ -191,11 +191,7 @@ def _timer_fragment(api_key: str) -> None:
     role = get_job_display_label(st.session_state)
     duration = st.session_state.get("interview_duration_minutes", 20)
 
-    end_col, header_col = st.columns([1, 4])
-    with end_col:
-        if st.button("End Interview", type="secondary", use_container_width=True):
-            st.session_state["_show_end_interview_confirm"] = True
-            st.rerun(scope="app")
+    header_col, end_col = st.columns([6, 1], gap="small", vertical_alignment="center")
     with header_col:
         st.markdown(
             f"""
@@ -216,6 +212,10 @@ def _timer_fragment(api_key: str) -> None:
             """,
             unsafe_allow_html=True,
         )
+    with end_col:
+        if st.button("End Interview", type="secondary", use_container_width=True):
+            st.session_state["_show_end_interview_confirm"] = True
+            st.rerun(scope="app")
 
     if is_time_expired(state):
         _handle_time_expiry(api_key, state)
