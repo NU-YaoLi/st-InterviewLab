@@ -15,13 +15,13 @@ html, body, [class*="css"] {
 
 /* Center all page content — works with @st.fragment (columns do not). */
 section.main > div.block-container {
-    max-width: 68rem !important;
+    max-width: 52rem !important;
     margin-left: auto !important;
     margin-right: auto !important;
-    padding-top: 1rem;
+    padding-top: 0.35rem;
     padding-bottom: 2rem;
-    padding-left: max(2rem, 5vw);
-    padding-right: max(2rem, 5vw);
+    padding-left: max(2.5rem, 10vw);
+    padding-right: max(2.5rem, 10vw);
 }
 
 .setup-section {
