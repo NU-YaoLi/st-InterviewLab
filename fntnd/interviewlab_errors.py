@@ -8,6 +8,7 @@ of raw stack traces when API calls fail.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 
 import streamlit as st
 from openai import (
@@ -106,6 +107,24 @@ def show_queued_validation_error() -> None:
     message = st.session_state.get("_validation_error")
     if message:
         show_validation_error(message)
+
+
+@st.dialog("End this interview?")
+def show_end_interview_confirmation(on_confirm: Callable[[], None]) -> None:
+    """Centered confirmation before ending a mock interview early."""
+    st.markdown(
+        "Are you sure you want to end your mock interview now? "
+        "You'll receive feedback based on what you've answered so far."
+    )
+    no_col, yes_col = st.columns(2)
+    with no_col:
+        if st.button("No", use_container_width=True):
+            st.session_state.pop("_show_end_interview_confirm", None)
+            st.rerun(scope="app")
+    with yes_col:
+        if st.button("Yes, end interview", type="primary", use_container_width=True):
+            st.session_state.pop("_show_end_interview_confirm", None)
+            on_confirm()
 
 
 @st.dialog("Preparing your mock interview")

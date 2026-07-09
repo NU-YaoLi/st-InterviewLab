@@ -14,6 +14,7 @@ from bknd.interviewlab_openai import get_openai_client
 from fntnd.interviewlab_errors import (
     display_openai_error,
     queue_validation_error,
+    show_end_interview_confirmation,
     show_generating_dialog,
     show_queued_validation_error,
     SERVICE_UNAVAILABLE_MESSAGE,
@@ -27,7 +28,11 @@ from fntnd.interviewlab_state import (
 )
 from fntnd.interviewlab_styles import inject_styles
 from fntnd.views.interviewlab_evaluation_view import render_evaluation_view
-from fntnd.views.interviewlab_interview_view import render_chat_history, render_interview_view
+from fntnd.views.interviewlab_interview_view import (
+    end_interview_and_show_results,
+    render_chat_history,
+    render_interview_view,
+)
 from fntnd.views.interviewlab_landing_view import render_setup_view
 
 
@@ -92,6 +97,11 @@ def main() -> None:
             queue_validation_error(SERVICE_UNAVAILABLE_MESSAGE)
             reset_runtime_session()
             st.rerun()
+            return
+        if st.session_state.get("_show_end_interview_confirm"):
+            show_end_interview_confirmation(
+                lambda: end_interview_and_show_results(api_key)
+            )
             return
         render_interview_view(api_key)
     else:
