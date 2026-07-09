@@ -175,31 +175,35 @@ Respond in JSON only with this schema:
 # -------------------
 
 BEHAVIORAL_RUBRIC = """
-Score each dimension from 1-10:
+Score each dimension from 0-10 based ONLY on spoken candidate answers:
 
 1. Communication Clarity — articulation, concision, professional tone.
 2. Technical/Logical Accuracy — relevance of examples to the role; logical reasoning in stories.
 3. Structure (STAR) — completeness and clarity of Situation, Task, Action, Result.
 
+If there are no candidate answers, all dimension scores and overall_score must be 0.
+
 Also provide:
 - overall_score: integer 0-100 (weighted average mapped to 100-point scale)
-- strengths: list of 2-4 bullet strings ("What went well")
+- strengths: list of 2-4 bullet strings about what the candidate said ("What went well")
 - improvements: list of 2-4 bullet strings ("Areas for improvement")
-- sample_answer: a polished example answer for the most recent question
+- sample_answer: a polished example answer for the most recent question (empty string if none)
 """
 
 TECHNICAL_RUBRIC = """
-Score each dimension from 1-10:
+Score each dimension from 0-10 based ONLY on spoken candidate answers:
 
 1. Communication Clarity — ability to explain technical concepts clearly.
 2. Technical/Logical Accuracy — correctness, depth, and role-appropriate knowledge.
 3. Structure — organized reasoning, trade-off discussion, step-by-step clarity.
 
+If there are no candidate answers, all dimension scores and overall_score must be 0.
+
 Also provide:
 - overall_score: integer 0-100
-- strengths: list of 2-4 bullet strings
+- strengths: list of 2-4 bullet strings about what the candidate said
 - improvements: list of 2-4 bullet strings
-- sample_answer: an optimized answer to the most recent question
+- sample_answer: an optimized answer to the most recent question (empty string if none)
 """
 
 

@@ -1,13 +1,14 @@
 """
-Post-interview and per-turn evaluation logic.
+Post-interview and per-turn evaluation logic for live Realtime interviews.
 
-Uses the configured chat model with structured JSON output to score responses
-against mode-specific rubrics.
+Scores spoken candidate answers only. Empty sessions return a deterministic
+zero result so resume/job context cannot inflate scores.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from openai import OpenAI, OpenAIError
@@ -16,25 +17,53 @@ from bknd.interviewlab_engine import InterviewState
 from bknd.interviewlab_openai import create_chat_completion
 from interviewlab_config import INTERVIEWLAB_MODEL, get_rubric
 
+logger = logging.getLogger(__name__)
 
-EVALUATION_SYSTEM_PROMPT = """You are an expert interview coach evaluating mock interview performance.
+EVALUATION_SYSTEM_PROMPT = """You are an expert interview coach evaluating a LIVE spoken mock interview.
 
-Analyze the full interview transcript and/or the latest Q&A pair.
-Apply the provided rubric strictly and respond with JSON only — no markdown.
+CRITICAL RULES:
+1. Score ONLY the candidate's spoken answers in the interview transcript.
+2. Do NOT award points for resume content, job description fit, or credentials \
+unless the candidate actually discussed them in their spoken answers.
+3. If the transcript has no candidate answers (or only interviewer speech), \
+overall_score MUST be 0 and every dimension score MUST be 0.
+4. Strengths and improvements must refer to what the candidate said (or failed \
+to say) during the interview — not generic resume praise.
+5. Be fair but strict: empty, one-word, or off-topic answers score low.
+
+Apply the provided rubric and respond with JSON only — no markdown.
 
 Required JSON schema:
 {
   "overall_score": <integer 0-100>,
   "dimension_scores": {
-    "communication_clarity": <integer 1-10>,
-    "technical_logical_accuracy": <integer 1-10>,
-    "structure": <integer 1-10>
+    "communication_clarity": <integer 0-10>,
+    "technical_logical_accuracy": <integer 0-10>,
+    "structure": <integer 0-10>
   },
   "strengths": ["string", ...],
   "improvements": ["string", ...],
   "sample_answer": "string — optimized answer for the most recent main question"
 }
 """
+
+EMPTY_INTERVIEW_RESULT: dict[str, Any] = {
+    "overall_score": 0,
+    "dimension_scores": {
+        "communication_clarity": 0,
+        "technical_logical_accuracy": 0,
+        "structure": 0,
+    },
+    "strengths": [
+        "No candidate answers were recorded in this live session.",
+    ],
+    "improvements": [
+        "Stay in the session and speak your answers out loud so they can be transcribed and scored.",
+        "Wait for the interviewer to finish asking, then answer; pause about 5 seconds when you are done so the next question can start.",
+        "Complete several full question-and-answer turns before ending the interview.",
+    ],
+    "sample_answer": "",
+}
 
 
 def _parse_evaluation_json(raw: str) -> dict[str, Any]:
@@ -46,15 +75,15 @@ def _parse_evaluation_json(raw: str) -> dict[str, Any]:
 
     dimension_scores = data.get("dimension_scores", {})
     return {
-        "overall_score": int(data.get("overall_score", 0)),
+        "overall_score": _clamp_int(data.get("overall_score", 0), 0, 100),
         "dimension_scores": {
-            "communication_clarity": int(
-                dimension_scores.get("communication_clarity", 0)
+            "communication_clarity": _clamp_int(
+                dimension_scores.get("communication_clarity", 0), 0, 10
             ),
-            "technical_logical_accuracy": int(
-                dimension_scores.get("technical_logical_accuracy", 0)
+            "technical_logical_accuracy": _clamp_int(
+                dimension_scores.get("technical_logical_accuracy", 0), 0, 10
             ),
-            "structure": int(dimension_scores.get("structure", 0)),
+            "structure": _clamp_int(dimension_scores.get("structure", 0), 0, 10),
         },
         "strengths": list(data.get("strengths", [])),
         "improvements": list(data.get("improvements", [])),
@@ -62,17 +91,50 @@ def _parse_evaluation_json(raw: str) -> dict[str, Any]:
     }
 
 
+def _clamp_int(value: Any, low: int, high: int) -> int:
+    try:
+        return max(low, min(high, int(value)))
+    except (TypeError, ValueError):
+        return low
+
+
+def _candidate_answer_count(state: InterviewState) -> int:
+    """Count substantive candidate answers from responses or chat history."""
+    count = 0
+    for item in state.responses:
+        if (item.get("answer") or "").strip():
+            count += 1
+    if count:
+        return count
+
+    for turn in state.chat_history:
+        if turn.get("role") == "user" and (turn.get("content") or "").strip():
+            count += 1
+    return count
+
+
 def _format_transcript(state: InterviewState) -> str:
-    if not state.responses:
-        return "(No responses recorded.)"
+    """Build a readable transcript for the evaluation model."""
+    if state.responses:
+        lines: list[str] = []
+        for i, item in enumerate(state.responses, start=1):
+            q_label = (
+                "Follow-up"
+                if item.get("is_follow_up")
+                else f"Q{item.get('question_index', i)}"
+            )
+            lines.append(f"[{q_label}] Interviewer: {item.get('question', '')}")
+            lines.append(f"Candidate: {item.get('answer', '')}")
+            lines.append("")
+        return "\n".join(lines).strip()
 
     lines = []
-    for i, item in enumerate(state.responses, start=1):
-        q_label = "Follow-up" if item.get("is_follow_up") else f"Q{item.get('question_index', i)}"
-        lines.append(f"[{q_label}] Interviewer: {item.get('question', '')}")
-        lines.append(f"Candidate: {item.get('answer', '')}")
-        lines.append("")
-    return "\n".join(lines)
+    for turn in state.chat_history:
+        role = "Interviewer" if turn.get("role") == "assistant" else "Candidate"
+        content = (turn.get("content") or "").strip()
+        if content:
+            lines.append(f"{role}: {content}")
+    return "\n".join(lines).strip() if lines else "(No candidate answers recorded.)"
 
 
 def _call_evaluation_llm(
@@ -82,7 +144,10 @@ def _call_evaluation_llm(
 ) -> dict[str, Any]:
     rubric = get_rubric(mode)
     messages = [
-        {"role": "system", "content": EVALUATION_SYSTEM_PROMPT + "\n\nRubric:\n" + rubric},
+        {
+            "role": "system",
+            "content": EVALUATION_SYSTEM_PROMPT + "\n\nRubric:\n" + rubric,
+        },
         {"role": "user", "content": user_content},
     ]
     try:
@@ -107,13 +172,25 @@ def evaluate_turn(
     latest_question: str,
     latest_answer: str,
 ) -> dict[str, Any]:
+    if not (latest_answer or "").strip():
+        return {
+            "overall_score": 0,
+            "dimension_scores": dict(EMPTY_INTERVIEW_RESULT["dimension_scores"]),
+            "strengths": [],
+            "improvements": ["No answer was recorded for this turn."],
+            "sample_answer": "",
+            "feedback": "No answer was recorded for this turn.",
+        }
+
     ctx = state.to_context()
     user_content = (
         f"Mode: {ctx.mode}\n"
-        f"Job details:\n{ctx.job_description or '(none)'}\n\n"
+        f"Job details (relevance only — do not score the resume/job text itself):\n"
+        f"{ctx.job_description or '(none)'}\n\n"
         f"Latest question:\n{latest_question}\n\n"
         f"Latest answer:\n{latest_answer}\n\n"
-        f"Prior transcript:\n{_format_transcript(state)}"
+        f"Prior transcript:\n{_format_transcript(state)}\n\n"
+        "Score only what the candidate said in the latest answer."
     )
     return _call_evaluation_llm(client, ctx.mode, user_content)
 
@@ -122,13 +199,29 @@ def evaluate_full_interview(
     client: OpenAI,
     state: InterviewState,
 ) -> dict[str, Any]:
+    """
+    Evaluate the completed live interview.
+
+    If the candidate never answered, return a deterministic zero score without
+    calling the model (avoids resume-based inflated scores).
+    """
+    answer_count = _candidate_answer_count(state)
+    if answer_count == 0:
+        logger.info("No candidate answers recorded — returning empty-interview result")
+        return dict(EMPTY_INTERVIEW_RESULT)
+
     ctx = state.to_context()
     user_content = (
         f"Mode: {ctx.mode}\n"
-        f"Job details:\n{ctx.job_description or '(none)'}\n\n"
-        f"Candidate background (resume/profile):\n{ctx.resume or '(none)'}\n\n"
-        f"Evaluate how well the answer fits the role and the candidate's stated background.\n\n"
-        f"Full interview transcript:\n{_format_transcript(state)}"
+        f"Candidate answers recorded: {answer_count}\n\n"
+        f"=== INTERVIEW TRANSCRIPT (score only this) ===\n"
+        f"{_format_transcript(state)}\n"
+        f"=== END TRANSCRIPT ===\n\n"
+        f"Job context (for relevance of answers only — do not score credentials):\n"
+        f"{ctx.job_description or '(none)'}\n\n"
+        f"Resume context (only if the candidate referenced experience in answers):\n"
+        f"{ctx.resume or '(none)'}\n\n"
+        "Score spoken performance only. Strengths/improvements must cite the transcript."
     )
     return _call_evaluation_llm(client, ctx.mode, user_content)
 

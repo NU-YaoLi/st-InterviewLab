@@ -23,7 +23,18 @@ def render_evaluation_view() -> None:
     overall = results.get("overall_score", 0)
     role = get_job_display_label(st.session_state)
     duration = st.session_state.get("interview_duration_minutes", 20)
-    responses = st.session_state.get("responses", [])
+    responses = [
+        r
+        for r in (st.session_state.get("responses") or [])
+        if (r.get("answer") or "").strip()
+    ]
+    answer_count = len(responses)
+    if answer_count == 0:
+        answer_count = sum(
+            1
+            for m in (st.session_state.get("chat_history") or [])
+            if m.get("role") == "user" and (m.get("content") or "").strip()
+        )
 
     st.markdown(
         f"""
@@ -31,12 +42,18 @@ def render_evaluation_view() -> None:
             <div class="eval-score-big">{overall}</div>
             <div class="eval-score-label">Overall Score out of 100</div>
             <p style="color:#64748b;margin-top:1rem;font-size:0.9rem">
-                {mode} · {role} · {duration} min session · {len(responses)} responses
+                {mode} · {role} · {duration} min session · {answer_count} responses
             </p>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+    if answer_count == 0:
+        st.info(
+            "No spoken answers were recorded in this live session, so the score is 0. "
+            "Complete a few question-and-answer turns before ending the interview."
+        )
 
     dims = results.get("dimension_scores", {})
     d_cols = st.columns(3)
