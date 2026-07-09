@@ -24,7 +24,7 @@ from bknd.interviewlab_language import NON_ENGLISH_UI_MESSAGE, is_english_text
 from bknd.interviewlab_openai import get_openai_client
 from fntnd.interviewlab_errors import display_openai_error
 from fntnd.interviewlab_state import apply_state_to_session, get_job_display_label, state_from_session
-from interviewlab_config import PER_TURN_EVALUATION, SILENCE_SUBMIT_SECONDS
+from interviewlab_config import PER_TURN_EVALUATION
 
 
 def render_chat_history() -> None:
@@ -97,41 +97,36 @@ def _timer_class(remaining_seconds: float) -> str:
 
 
 def _render_interview_header(state: object) -> None:
-    """Full-width header card with End Interview on the right."""
+    """Full-width solid purple header; End Interview sits on the right of the card."""
     timer_cls = _timer_class(get_remaining_seconds(state))
     mode = st.session_state.get("interview_mode", "Behavioral")
     role = get_job_display_label(st.session_state)
     duration = st.session_state.get("interview_duration_minutes", 20)
     timer_text = format_remaining_time(state)
 
-    st.markdown('<div class="interview-header-marker"></div>', unsafe_allow_html=True)
-    left, mid, right = st.columns([5, 2, 1.6], vertical_alignment="center")
-    with left:
-        st.markdown(
-            f"""
-            <div class="interview-header-title">{mode} Interview · {role}</div>
-            <div class="status-badge" style="margin-top:0.5rem">
-                <span class="status-dot"></span> Live · English voice
+    st.markdown(
+        f"""
+        <div class="interview-header">
+            <div class="interview-header-left">
+                <div class="interview-header-title">{html.escape(str(mode))} Interview · {html.escape(str(role))}</div>
+                <div class="status-badge" style="margin-top:0.5rem">
+                    <span class="status-dot"></span> Live · English voice
+                </div>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with mid:
-        st.markdown(
-            f"""
-            <div style="text-align:right">
+            <div class="interview-header-right">
                 <div class="{timer_cls}">{timer_text}</div>
-                <div style="font-size:0.8rem;opacity:0.7;margin-top:0.25rem;color:rgba(255,255,255,0.85)">
+                <div style="font-size:0.8rem;opacity:0.7;margin-top:0.25rem">
                     {duration} min session
                 </div>
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with right:
-        if st.button("End Interview", type="secondary", key="end_interview_btn", use_container_width=True):
-            st.session_state["_show_end_interview_confirm"] = True
-            st.rerun(scope="app")
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown('<div class="end-interview-anchor"></div>', unsafe_allow_html=True)
+    if st.button("End Interview", type="secondary", key="end_interview_btn"):
+        st.session_state["_show_end_interview_confirm"] = True
+        st.rerun(scope="app")
 
 
 def _inject_mic_control_script(*, action: str) -> None:
@@ -247,23 +242,6 @@ def _render_live_caption() -> None:
     )
 
 
-def _check_silence_timeout(api_key: str) -> bool:
-    """Auto-advance when the candidate stays quiet for the full silence window."""
-    if st.session_state.get("interview_phase") != "listening":
-        return False
-    if st.session_state.get("_silence_handled"):
-        return False
-    deadline = st.session_state.get("mic_listen_deadline")
-    if not deadline or time.time() <= deadline:
-        return False
-    if st.session_state.get("last_audio_payload_id"):
-        return False
-    st.session_state["_silence_handled"] = True
-    st.session_state.pop("mic_listen_deadline", None)
-    _process_answer(api_key, "I did not provide a verbal answer to this question.")
-    return True
-
-
 @st.fragment(run_every=1)
 def _timer_fragment(api_key: str) -> None:
     """Auto-refresh timer; trigger full rerun when mic should open."""
@@ -276,9 +254,6 @@ def _timer_fragment(api_key: str) -> None:
 
     state = state_from_session(st.session_state)
     if not st.session_state.get("interview_active"):
-        return
-
-    if _check_silence_timeout(api_key):
         return
 
     _render_interview_header(state)
@@ -388,8 +363,6 @@ def _process_answer(api_key: str, user_answer: str) -> None:
         if result.get("action") != "complete":
             st.session_state["mic_turn_id"] = st.session_state.get("mic_turn_id", 0) + 1
         st.session_state.pop("last_audio_payload_id", None)
-        st.session_state.pop("mic_listen_deadline", None)
-        st.session_state.pop("_silence_handled", None)
         st.rerun(scope="app")
 
     except Exception as exc:
@@ -434,8 +407,8 @@ def _render_voice_input(api_key: str) -> None:
         return
 
     st.markdown(
-        '<p class="mic-active-hint">🎙️ Your turn — speak your answer below. '
-        f'Click <strong>Finish Answering</strong> when done, or stay quiet for {SILENCE_SUBMIT_SECONDS}s to continue.</p>',
+        '<p class="mic-active-hint">🎙️ Your turn — speak your answer below, then click '
+        "<strong>Finish Answering</strong> to continue.</p>",
         unsafe_allow_html=True,
     )
 
@@ -444,9 +417,7 @@ def _render_voice_input(api_key: str) -> None:
     stop_now = st.session_state.pop("_stop_mic_now", False)
 
     if auto_start:
-        st.session_state["mic_listen_deadline"] = time.time() + SILENCE_SUBMIT_SECONDS
         st.session_state.pop("last_audio_payload_id", None)
-        st.session_state.pop("_silence_handled", None)
 
     audio_value = st.audio_input(
         "Record your answer",
@@ -459,23 +430,25 @@ def _render_voice_input(api_key: str) -> None:
     if stop_now:
         _inject_mic_control_script(action="stop")
 
-    if _check_silence_timeout(api_key):
+    if st.session_state.pop("_finish_after_stop", False):
+        if audio_value is not None:
+            payload_id = f"{turn_id}:{getattr(audio_value, 'size', len(audio_value.getvalue()))}"
+            if payload_id != st.session_state.get("last_audio_payload_id"):
+                st.session_state["last_audio_payload_id"] = payload_id
+                _transcribe_and_submit(api_key, audio_value.getvalue(), suffix=".wav")
+                return
+        _process_answer(api_key, "I did not provide a verbal answer to this question.")
         return
-
-    if audio_value is not None:
-        payload_id = f"{turn_id}:{getattr(audio_value, 'size', len(audio_value.getvalue()))}"
-        if payload_id != st.session_state.get("last_audio_payload_id"):
-            st.session_state["last_audio_payload_id"] = payload_id
-            st.session_state.pop("mic_listen_deadline", None)
-            _transcribe_and_submit(api_key, audio_value.getvalue(), suffix=".wav")
-            return
 
     if st.button("Finish Answering →", type="primary", use_container_width=True):
         if audio_value is not None:
-            st.session_state.pop("mic_listen_deadline", None)
+            payload_id = f"{turn_id}:{getattr(audio_value, 'size', len(audio_value.getvalue()))}"
+            st.session_state["last_audio_payload_id"] = payload_id
             _transcribe_and_submit(api_key, audio_value.getvalue(), suffix=".wav")
             return
+        # Stop an in-progress recording, then submit on the next rerun.
         st.session_state["_stop_mic_now"] = True
+        st.session_state["_finish_after_stop"] = True
         st.rerun(scope="app")
 
 

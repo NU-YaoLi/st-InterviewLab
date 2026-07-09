@@ -213,53 +213,59 @@ section.main > div.block-container {
 }
 
 .interview-header {
-    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%);
+    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%) !important;
     border-radius: 16px;
-    padding: 1.25rem 1.5rem;
-    color: white;
-    margin-bottom: 1.5rem;
+    padding: 1.35rem 11rem 1.35rem 1.75rem;
+    color: white !important;
+    margin-bottom: 0;
     width: 100%;
     box-sizing: border-box;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    min-height: 5.5rem;
 }
 
-.interview-header-marker {
-    display: none;
+.interview-header-left { flex: 1; min-width: 0; }
+.interview-header-right {
+    text-align: right;
+    flex-shrink: 0;
+    margin-left: 1rem;
 }
 
-/* Full-width purple header row: title + timer + End Interview */
-div:has(> div > .interview-header-marker) + div[data-testid="stHorizontalBlock"],
-div:has(> .interview-header-marker) + div[data-testid="stHorizontalBlock"] {
-    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%);
-    border-radius: 16px;
-    padding: 1.15rem 1.35rem;
-    margin-bottom: 1.5rem;
-    align-items: center;
-    gap: 0.75rem;
-    width: 100%;
-    box-sizing: border-box;
+.end-interview-anchor { display: none; }
+
+/* Pull End Interview onto the right side of the solid purple header card */
+div[data-testid="stElementContainer"]:has(.interview-header) {
+    margin-bottom: 0 !important;
 }
 
-div:has(> div > .interview-header-marker) + div[data-testid="stHorizontalBlock"] .interview-header-title,
-div:has(> .interview-header-marker) + div[data-testid="stHorizontalBlock"] .interview-header-title,
-div:has(> div > .interview-header-marker) + div[data-testid="stHorizontalBlock"] .status-badge,
-div:has(> .interview-header-marker) + div[data-testid="stHorizontalBlock"] .status-badge,
-div:has(> div > .interview-header-marker) + div[data-testid="stHorizontalBlock"] .interview-timer,
-div:has(> .interview-header-marker) + div[data-testid="stHorizontalBlock"] .interview-timer {
-    color: white;
+div[data-testid="stElementContainer"]:has(.end-interview-anchor) {
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
 }
 
-div:has(> div > .interview-header-marker) + div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button,
-div:has(> .interview-header-marker) + div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button {
-    background: rgba(255, 255, 255, 0.95) !important;
+div[data-testid="stElementContainer"]:has(.end-interview-anchor) + div[data-testid="stElementContainer"] {
+    margin-top: -4.35rem !important;
+    margin-bottom: 1.5rem !important;
+    display: flex !important;
+    justify-content: flex-end !important;
+    padding-right: 1.35rem !important;
+    position: relative;
+    z-index: 5;
+}
+
+div[data-testid="stElementContainer"]:has(.end-interview-anchor) + div[data-testid="stElementContainer"] div[data-testid="stButton"] > button {
+    background: rgba(255, 255, 255, 0.96) !important;
     color: #312e81 !important;
     border: none !important;
     font-weight: 600;
+    min-width: 8.5rem;
 }
 
-.interview-header-title { font-size: 1.1rem; font-weight: 600; opacity: 0.9; }
+.interview-header-title { font-size: 1.1rem; font-weight: 600; opacity: 0.9; color: white; }
 .interview-timer {
     font-size: 2rem;
     font-weight: 800;
