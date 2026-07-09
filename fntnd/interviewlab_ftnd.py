@@ -26,10 +26,10 @@ from fntnd.interviewlab_state import (
     state_from_session,
 )
 from fntnd.interviewlab_styles import inject_styles
+from fntnd.interviewlab_transcript import render_chat_history
 from fntnd.views.interviewlab_evaluation_view import render_evaluation_view
 from fntnd.views.interviewlab_interview_view import (
     end_interview_and_show_results,
-    render_chat_history,
     render_interview_view,
 )
 from fntnd.views.interviewlab_landing_view import render_setup_view

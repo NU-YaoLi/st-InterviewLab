@@ -21,15 +21,6 @@ from fntnd.interviewlab_state import apply_state_to_session, get_job_display_lab
 from interviewlab_config import REALTIME_SILENCE_DURATION_MS
 
 
-def render_chat_history() -> None:
-    """Full transcript for post-interview review."""
-    for msg in st.session_state.get("chat_history", []):
-        role = "assistant" if msg["role"] == "assistant" else "user"
-        avatar = "🎤" if role == "assistant" else "👤"
-        with st.chat_message(role, avatar=avatar):
-            st.markdown(msg["content"])
-
-
 def _timer_class(remaining_seconds: float) -> str:
     if remaining_seconds <= 60:
         return "interview-timer interview-timer-critical"
@@ -337,11 +328,10 @@ def render_interview_view(api_key: str) -> None:
     if err:
         st.error(err)
 
-    silence_secs = max(1, int(round(REALTIME_SILENCE_DURATION_MS / 1000)))
     st.markdown(
         f'<p class="mic-active-hint">🎙️ Live Realtime interview — speak naturally. '
-        f"Tip: stay quiet for <strong>{silence_secs} seconds</strong> when you finish an answer "
-        "and the interviewer will continue. "
+        f"<strong>Tip:</strong> stay quiet for <strong>{silence_secs} seconds</strong> when you "
+        "finish an answer to continue to the next question. "
         "Use <strong>End Interview</strong> when you want to stop the session.</p>",
         unsafe_allow_html=True,
     )

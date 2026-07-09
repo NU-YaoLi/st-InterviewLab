@@ -163,6 +163,10 @@ def _bootstrap() -> None:
         "fntnd.interviewlab_realtime_component",
         _root / "fntnd" / "interviewlab_realtime_component.py",
     )
+    _load_module(
+        "fntnd.interviewlab_transcript",
+        _root / "fntnd" / "interviewlab_transcript.py",
+    )
 
     _load_package("fntnd.views", _root / "fntnd" / "views" / "__init__.py")
     _load_module(

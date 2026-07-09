@@ -68,6 +68,7 @@
       <div id="status">Connecting live interview…</div>
     </div>
     <div id="caption" class="caption"></div>
+    <div id="tip" class="tip">Tip: stay quiet for 5 seconds when you finish an answer to continue.</div>
   </div>
   <script>
     (function () {
@@ -126,6 +127,7 @@
     const statusEl = document.getElementById("status");
     const dotEl = document.getElementById("dot");
     const captionEl = document.getElementById("caption");
+    const tipEl = document.getElementById("tip");
 
     // Persist WebRTC across Streamlit remounts (setComponentValue remounts the iframe).
     const STORE_KEY = "__interviewlabRealtimeSessions";
@@ -170,7 +172,15 @@
 
     function setCaption(text) {
       captionEl.textContent = text || "";
-      Streamlit.setFrameHeight(text ? 88 : 56);
+      Streamlit.setFrameHeight(text ? 110 : 84);
+    }
+
+    function setSilenceTip(seconds) {
+      const secs = Math.max(1, Number(seconds) || 5);
+      tipEl.textContent =
+        "Tip: stay quiet for " +
+        secs +
+        " seconds when you finish an answer to continue to the next question.";
     }
 
     function emitToStreamlit(s, extra) {
@@ -521,7 +531,9 @@
       const id = Number(args.session_id || 0);
       const disconnect = !!args.disconnect;
 
-      Streamlit.setFrameHeight(captionEl.textContent ? 88 : 56);
+      const silenceSeconds = Number(args.silence_seconds || 5);
+      setSilenceTip(silenceSeconds);
+      Streamlit.setFrameHeight(captionEl.textContent ? 110 : 84);
 
       if (disconnect) {
         if (sessionId == null && id) sessionId = id;
@@ -536,7 +548,8 @@
 
     Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, onRender);
     Streamlit.setComponentReady();
-    Streamlit.setFrameHeight(56);
+    setSilenceTip(5);
+    Streamlit.setFrameHeight(84);
   </script>
 </body>
 </html>

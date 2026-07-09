@@ -8,7 +8,6 @@ from bknd.interviewlab_evaluator import get_dimension_labels, run_evaluation
 from bknd.interviewlab_openai import get_openai_client
 from fntnd.interviewlab_errors import display_openai_error
 from fntnd.interviewlab_state import apply_state_to_session, get_api_key_from_session, get_job_display_label, state_from_session
-from fntnd.views.interviewlab_interview_view import render_chat_history
 
 
 def render_evaluation_view() -> None:
