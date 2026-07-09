@@ -194,7 +194,8 @@ def _timer_fragment(api_key: str) -> None:
     end_col, header_col = st.columns([1, 4])
     with end_col:
         if st.button("End Interview", type="secondary", use_container_width=True):
-            st.session_state["_end_interview_requested"] = True
+            st.session_state["_show_end_interview_confirm"] = True
+            st.rerun(scope="app")
     with header_col:
         st.markdown(
             f"""
@@ -215,10 +216,6 @@ def _timer_fragment(api_key: str) -> None:
             """,
             unsafe_allow_html=True,
         )
-
-    if st.session_state.pop("_end_interview_requested", False):
-        _handle_end_interview(api_key)
-        return
 
     if is_time_expired(state):
         _handle_time_expiry(api_key, state)
@@ -282,6 +279,24 @@ def _handle_end_interview(api_key: str) -> None:
         st.rerun(scope="app")
     except Exception as exc:
         display_openai_error(exc)
+
+
+@st.dialog("End this interview?")
+def _confirm_end_interview_dialog(api_key: str) -> None:
+    """Ask the candidate to confirm before ending the mock interview early."""
+    st.markdown(
+        "Are you sure you want to end your mock interview now? "
+        "You'll receive feedback based on what you've answered so far."
+    )
+    cancel_col, confirm_col = st.columns(2)
+    with cancel_col:
+        if st.button("Keep interviewing", use_container_width=True):
+            st.session_state.pop("_show_end_interview_confirm", None)
+            st.rerun(scope="app")
+    with confirm_col:
+        if st.button("Yes, end interview", type="primary", use_container_width=True):
+            st.session_state.pop("_show_end_interview_confirm", None)
+            _handle_end_interview(api_key)
 
 
 def _process_answer(api_key: str, user_answer: str) -> None:
@@ -434,6 +449,10 @@ def _render_voice_input(api_key: str) -> None:
 
 
 def render_interview_view(api_key: str) -> None:
+    if st.session_state.get("_show_end_interview_confirm"):
+        _confirm_end_interview_dialog(api_key)
+        return
+
     session_started = st.session_state.get("interview_session_started", False)
 
     if st.session_state.pop("_auto_start_session", False) and not session_started:
