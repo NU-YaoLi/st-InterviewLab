@@ -155,7 +155,6 @@ def _bootstrap() -> None:
     _load_module("fntnd.interviewlab_state", _root / "fntnd" / "interviewlab_state.py")
     _load_module("fntnd.interviewlab_errors", _root / "fntnd" / "interviewlab_errors.py")
     _load_module("fntnd.interviewlab_styles", _root / "fntnd" / "interviewlab_styles.py")
-    _load_module("fntnd.interviewlab_mic_component", _root / "fntnd" / "interviewlab_mic_component.py")
 
     _load_package("fntnd.views", _root / "fntnd" / "views" / "__init__.py")
     _load_module(
@@ -190,19 +189,8 @@ def _bootstrap() -> None:
 _bootstrap()
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 from interviewlab_config import APP_TITLE
-
-_mic_component_dir = (_root / "fntnd" / "components" / "auto_mic").resolve()
-if not (_mic_component_dir / "index.html").is_file():
-    raise FileNotFoundError(f"Mic component frontend missing: {_mic_component_dir}")
-
-_interviewlab_auto_mic = components.declare_component(
-    "interviewlab_auto_mic",
-    path=str(_mic_component_dir),
-)
-sys.modules["fntnd.interviewlab_mic_component"].set_auto_mic_recorder(_interviewlab_auto_mic)
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🎙️", layout="wide")
 

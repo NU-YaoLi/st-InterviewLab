@@ -221,6 +221,17 @@ section.main > div.block-container {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex: 1;
+    width: 100%;
+}
+
+div[data-testid="stHorizontalBlock"] .interview-header {
+    margin-bottom: 0;
+}
+
+div[data-testid="stHorizontalBlock"]:has(.interview-header) {
+    margin-bottom: 1.5rem;
+    gap: 0.75rem;
 }
 
 .interview-header-title { font-size: 1.1rem; font-weight: 600; opacity: 0.9; }
