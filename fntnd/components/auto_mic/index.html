@@ -54,8 +54,10 @@
     let chunks = [];
     let hasSpoken = false;
     let silenceMs = 0;
+    let openMs = 0;
     let activeSession = 0;
-    let lastArgsKey = "";
+    let lastAutoStartKey = "";
+    let messageListenerAttached = false;
 
     const SILENCE_THRESHOLD = 0.018;
     const CHECK_INTERVAL_MS = 200;
@@ -86,6 +88,7 @@
       chunks = [];
       hasSpoken = false;
       silenceMs = 0;
+      openMs = 0;
     }
 
     function finishRecording(sessionId) {
@@ -93,6 +96,12 @@
       if (!mediaRecorder || mediaRecorder.state === "inactive") return;
       setStatus("Processing your answer…", false);
       try { mediaRecorder.stop(); } catch (e) {}
+    }
+
+    function submitEmptyAnswer() {
+      cleanup();
+      setStatus("No speech detected — moving on", false);
+      Streamlit.setComponentValue({ empty: true });
     }
 
     function monitorSilence(sessionId, silenceLimitMs) {
@@ -106,16 +115,27 @@
           sum += v * v;
         }
         const rms = Math.sqrt(sum / data.length);
+
         if (rms > SILENCE_THRESHOLD) {
           hasSpoken = true;
           silenceMs = 0;
+          openMs = 0;
           setStatus("Listening… speak your answer", true);
           return;
         }
+
         if (!hasSpoken) {
-          setStatus("Listening… speak when ready", true);
+          openMs += CHECK_INTERVAL_MS;
+          const remaining = Math.max(0, Math.ceil((silenceLimitMs - openMs) / 1000));
+          setStatus(`Listening… speak now (${remaining}s until next question)`, true);
+          if (openMs >= silenceLimitMs) {
+            clearInterval(monitorTimer);
+            monitorTimer = null;
+            submitEmptyAnswer();
+          }
           return;
         }
+
         silenceMs += CHECK_INTERVAL_MS;
         const remaining = Math.max(0, Math.ceil((silenceLimitMs - silenceMs) / 1000));
         setStatus(`Listening… auto-continue in ${remaining}s if you stay quiet`, true);
@@ -126,6 +146,7 @@
     }
 
     async function startRecording(sessionId, silenceLimitMs) {
+      if (mediaRecorder && mediaRecorder.state === "recording") return;
       cleanup();
       activeSession = sessionId;
       chunks = [];
@@ -152,6 +173,10 @@
       };
       mediaRecorder.onstop = () => {
         if (sessionId !== activeSession) return;
+        if (!chunks.length) {
+          submitEmptyAnswer();
+          return;
+        }
         const blob = new Blob(chunks, { type: mimeType });
         const reader = new FileReader();
         reader.onloadend = () => {
@@ -170,14 +195,27 @@
       monitorSilence(sessionId, silenceLimitMs);
     }
 
+    function attachMessageListener() {
+      if (messageListenerAttached) return;
+      messageListenerAttached = true;
+      window.parent.addEventListener("message", (event) => {
+        const data = event.data || {};
+        if (data.type === "interviewlab_start_mic") {
+          const silenceLimitMs = Math.max(3000, Number(data.silenceSeconds || 15) * 1000);
+          startRecording(Date.now(), silenceLimitMs);
+        }
+      });
+    }
+
     function onRender(event) {
       const args = event.detail.args || {};
       const autoStart = !!args.auto_start;
       const stopNow = !!args.stop_now;
       const silenceSeconds = Number(args.silence_seconds || 15);
       const silenceLimitMs = Math.max(3000, silenceSeconds * 1000);
-      const argsKey = `${autoStart}|${stopNow}|${silenceSeconds}`;
+      const autoStartKey = `${autoStart}|${stopNow}|${silenceSeconds}`;
 
+      attachMessageListener();
       Streamlit.setFrameHeight(56);
 
       if (stopNow) {
@@ -185,15 +223,20 @@
         return;
       }
 
-      if (autoStart && argsKey !== lastArgsKey) {
-        lastArgsKey = argsKey;
-        const sessionId = Date.now();
-        startRecording(sessionId, silenceLimitMs);
+      if (autoStart && autoStartKey !== lastAutoStartKey) {
+        lastAutoStartKey = autoStartKey;
+        startRecording(Date.now(), silenceLimitMs);
+        return;
+      }
+
+      if (!mediaRecorder || mediaRecorder.state === "inactive") {
+        setStatus("Microphone ready — waiting for your turn", false);
       }
     }
 
     Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, onRender);
     Streamlit.setComponentReady();
+    attachMessageListener();
     Streamlit.setFrameHeight(56);
   </script>
 </body>

@@ -165,7 +165,7 @@ def _setup_fields_fragment() -> None:
     st.session_state["target_level"] = ""
 
     _section_title(
-        "Your Background",
+        "Your Background(optional)",
         "Paste notes or upload your resume — questions will be tailored to your experience and the job.",
     )
 

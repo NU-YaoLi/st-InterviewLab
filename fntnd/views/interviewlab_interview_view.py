@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import html
-import math
 import time
 
 import streamlit as st
@@ -62,7 +61,13 @@ def _clear_live_caption() -> None:
 
 def _expire_live_caption_if_needed() -> None:
     expires = st.session_state.get("live_caption_expires_at")
+    speaker = st.session_state.get("live_caption_speaker")
     if expires and time.time() > expires:
+        if (
+            speaker == "interviewer"
+            and st.session_state.get("interview_phase") == "interviewer_speaking"
+        ):
+            st.session_state["interview_phase"] = "listening"
         _clear_live_caption()
 
 
@@ -90,7 +95,7 @@ def _decode_mic_payload(payload: object) -> tuple[bytes, str]:
 
 
 def _play_tts_autoplay(audio_bytes: bytes | None, caption_text: str = "") -> None:
-    """Play interviewer audio, then automatically open the candidate microphone."""
+    """Play interviewer audio, then signal the mic to open when speech ends."""
     if not audio_bytes:
         return
     b64 = base64.b64encode(audio_bytes).decode()
@@ -102,6 +107,12 @@ def _play_tts_autoplay(audio_bytes: bytes | None, caption_text: str = "") -> Non
             const audio = new Audio("data:audio/mpeg;base64,{b64}");
             audio.playsInline = true;
             audio.play().catch(function() {{}});
+            audio.addEventListener("ended", function() {{
+                window.parent.postMessage({{
+                    type: "interviewlab_start_mic",
+                    silenceSeconds: {SILENCE_SUBMIT_SECONDS}
+                }}, "*");
+            }});
         }})();
         </script>
         """,
@@ -109,8 +120,7 @@ def _play_tts_autoplay(audio_bytes: bytes | None, caption_text: str = "") -> Non
     )
     if caption_text:
         _set_live_caption("interviewer", caption_text, duration=speech_seconds)
-    st.session_state["interview_phase"] = "listening"
-    st.session_state["_mic_start_at"] = time.time() + speech_seconds + 0.35
+    st.session_state["interview_phase"] = "interviewer_speaking"
 
 
 def _render_meeting_room() -> None:
@@ -215,14 +225,6 @@ def _timer_fragment(api_key: str) -> None:
 
     _render_meeting_room()
     _render_live_caption()
-
-
-@st.fragment(run_every=1)
-def _mic_wait_fragment() -> None:
-    """Refresh while waiting for interviewer speech to finish before opening the mic."""
-    mic_start_at = st.session_state.get("_mic_start_at")
-    if not mic_start_at or time.time() >= mic_start_at:
-        st.rerun(scope="app")
 
 
 def _render_live_header() -> None:
@@ -346,10 +348,33 @@ def _handle_begin_session(api_key: str) -> None:
         display_openai_error(exc)
 
 
+def _handle_mic_payload(api_key: str, mic_payload: object) -> bool:
+    """Process a microphone capture payload. Returns True if handled."""
+    if not mic_payload or mic_payload == st.session_state.get("last_mic_payload"):
+        return False
+
+    st.session_state["last_mic_payload"] = mic_payload
+    st.session_state["interview_phase"] = "listening"
+
+    if isinstance(mic_payload, dict) and mic_payload.get("error") == "mic_denied":
+        st.error("Microphone access is required. Allow the mic in your browser and refresh.")
+        return True
+
+    if isinstance(mic_payload, dict) and mic_payload.get("empty"):
+        _process_answer(
+            api_key,
+            "I did not provide a verbal answer to this question.",
+        )
+        return True
+
+    audio_bytes, suffix = _decode_mic_payload(mic_payload)
+    _transcribe_and_submit(api_key, audio_bytes, suffix=suffix)
+    return True
+
+
 def _transcribe_and_submit(api_key: str, audio_bytes: bytes, *, suffix: str) -> None:
     if not audio_bytes:
-        st.warning("No audio was captured. Please try again.")
-        st.session_state["mic_auto_start"] = True
+        _process_answer(api_key, "I did not provide a verbal answer to this question.")
         return
 
     try:
@@ -358,8 +383,7 @@ def _transcribe_and_submit(api_key: str, audio_bytes: bytes, *, suffix: str) -> 
             transcribed = transcribe_audio_bytes(client, audio_bytes, suffix=suffix)
 
         if not transcribed.strip():
-            st.warning("Couldn't detect speech. Please try again and speak clearly in English.")
-            st.session_state["mic_auto_start"] = True
+            _process_answer(api_key, "I did not provide a verbal answer to this question.")
             return
 
         if not is_english_text(transcribed):
@@ -373,31 +397,24 @@ def _transcribe_and_submit(api_key: str, audio_bytes: bytes, *, suffix: str) -> 
 
 
 def _render_voice_input(api_key: str) -> None:
-    if st.session_state.get("interview_phase") != "listening":
+    phase = st.session_state.get("interview_phase")
+    if phase not in ("listening", "interviewer_speaking"):
         return
 
-    mic_start_at = st.session_state.get("_mic_start_at")
-    if mic_start_at and time.time() < mic_start_at:
-        seconds_left = max(1, math.ceil(mic_start_at - time.time()))
+    if phase == "interviewer_speaking":
         st.markdown(
-            f'<p class="mic-active-hint">🎤 Interviewer speaking… '
-            f"your microphone opens in <strong>{seconds_left}s</strong>.</p>",
+            '<p class="mic-active-hint">🎤 Interviewer speaking… your microphone opens automatically when they finish.</p>',
             unsafe_allow_html=True,
         )
-        return
-
-    st.markdown(
-        '<p class="mic-active-hint">🎙️ Your turn — the microphone is live. '
-        f"Speak naturally, click finished, or stay quiet for {SILENCE_SUBMIT_SECONDS}s.</p>",
-        unsafe_allow_html=True,
-    )
+    else:
+        st.markdown(
+            '<p class="mic-active-hint">🎙️ Your turn — microphone is live. '
+            f'Speak naturally, click **Finish Answering**, or stay quiet for {SILENCE_SUBMIT_SECONDS}s to continue.</p>',
+            unsafe_allow_html=True,
+        )
 
     turn_id = st.session_state.get("mic_turn_id", 0)
     auto_start = st.session_state.pop("mic_auto_start", False)
-    if mic_start_at and time.time() >= mic_start_at:
-        st.session_state.pop("_mic_start_at", None)
-        auto_start = True
-
     stop_now = st.session_state.pop("_stop_mic_now", False)
 
     mic_payload = render_auto_mic(
@@ -407,17 +424,12 @@ def _render_voice_input(api_key: str) -> None:
         key=f"auto_mic_{turn_id}",
     )
 
-    if isinstance(mic_payload, dict) and mic_payload.get("error") == "mic_denied":
-        st.error("Microphone access is required. Allow the mic in your browser and refresh.")
+    if _handle_mic_payload(api_key, mic_payload):
         return
 
-    if mic_payload and mic_payload != st.session_state.get("last_mic_payload"):
-        st.session_state["last_mic_payload"] = mic_payload
-        audio_bytes, suffix = _decode_mic_payload(mic_payload)
-        _transcribe_and_submit(api_key, audio_bytes, suffix=suffix)
-        return
-
-    if st.button("I'm finished with this answer →", type="primary", use_container_width=True):
+    if phase == "listening" and st.button(
+        "Finish Answering →", type="primary", use_container_width=True
+    ):
         st.session_state["_stop_mic_now"] = True
         st.rerun(scope="app")
 
@@ -433,20 +445,15 @@ def render_interview_view(api_key: str) -> None:
         audio = st.session_state.get("last_tts_audio")
         caption = st.session_state.pop("_autoplay_caption", "")
         if audio:
-            st.audio(audio, format="audio/mpeg")
             _play_tts_autoplay(audio, caption)
             st.session_state["last_tts_audio"] = None
         elif caption:
             _set_live_caption("interviewer", caption, duration=_estimate_speech_seconds(caption))
             st.session_state["interview_phase"] = "listening"
-            st.session_state["_mic_start_at"] = time.time() + _estimate_speech_seconds(caption) + 0.35
+            st.session_state["mic_auto_start"] = True
 
     if session_started:
         _timer_fragment(api_key)
-        if st.session_state.get("interview_phase") == "listening" and st.session_state.get(
-            "_mic_start_at"
-        ):
-            _mic_wait_fragment()
         _render_voice_input(api_key)
         return
 

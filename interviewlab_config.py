@@ -103,7 +103,6 @@ SESSION_DEFAULTS: dict[str, Any] = {
     "mic_auto_start": False,
     "_stop_mic_now": False,
     "last_mic_payload": None,
-    "_mic_start_at": None,
 }
 
 # -------------------
