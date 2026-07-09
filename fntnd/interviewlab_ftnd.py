@@ -98,11 +98,12 @@ def main() -> None:
             reset_runtime_session()
             st.rerun()
             return
-        if st.session_state.get("_show_end_interview_confirm"):
+        # Pop the flag so dismissing the dialog with X does not leave a blank page
+        # (dialog-only return) or reopen forever on the next rerun.
+        if st.session_state.pop("_show_end_interview_confirm", False):
             show_end_interview_confirmation(
                 lambda: end_interview_and_show_results(api_key)
             )
-            return
         render_interview_view(api_key)
     else:
         show_queued_validation_error()

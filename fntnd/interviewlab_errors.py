@@ -119,11 +119,9 @@ def show_end_interview_confirmation(on_confirm: Callable[[], None]) -> None:
     no_col, yes_col = st.columns(2)
     with no_col:
         if st.button("No", use_container_width=True):
-            st.session_state.pop("_show_end_interview_confirm", None)
             st.rerun(scope="app")
     with yes_col:
         if st.button("Yes, end interview", type="primary", use_container_width=True):
-            st.session_state.pop("_show_end_interview_confirm", None)
             on_confirm()
 
 

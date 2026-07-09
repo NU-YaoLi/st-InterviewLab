@@ -215,9 +215,9 @@ section.main > div.block-container {
 .interview-header {
     background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%) !important;
     border-radius: 16px;
-    padding: 1.35rem 11rem 1.35rem 1.75rem;
+    padding: 1.35rem 1.75rem;
     color: white !important;
-    margin-bottom: 0;
+    margin-bottom: 1.5rem;
     width: 100%;
     box-sizing: border-box;
     display: flex;
@@ -230,39 +230,34 @@ section.main > div.block-container {
 .interview-header-right {
     text-align: right;
     flex-shrink: 0;
-    margin-left: 1rem;
+    color: white;
 }
 
-.end-interview-anchor { display: none; }
-
-/* Pull End Interview onto the right side of the solid purple header card */
-div[data-testid="stElementContainer"]:has(.interview-header) {
-    margin-bottom: 0 !important;
-}
-
-div[data-testid="stElementContainer"]:has(.end-interview-anchor) {
-    height: 0 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: hidden !important;
-}
-
-div[data-testid="stElementContainer"]:has(.end-interview-anchor) + div[data-testid="stElementContainer"] {
-    margin-top: -4.35rem !important;
+/* Painted by JS onto the title/timer/End Interview row */
+div[data-testid="stHorizontalBlock"].interview-header-row {
+    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%) !important;
+    border-radius: 16px !important;
+    padding: 1.15rem 1.35rem !important;
     margin-bottom: 1.5rem !important;
-    display: flex !important;
-    justify-content: flex-end !important;
-    padding-right: 1.35rem !important;
-    position: relative;
-    z-index: 5;
+    align-items: center !important;
+    gap: 0.75rem !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
 }
 
-div[data-testid="stElementContainer"]:has(.end-interview-anchor) + div[data-testid="stElementContainer"] div[data-testid="stButton"] > button {
+div[data-testid="stHorizontalBlock"].interview-header-row .interview-header-title,
+div[data-testid="stHorizontalBlock"].interview-header-row .status-badge,
+div[data-testid="stHorizontalBlock"].interview-header-row .interview-timer,
+div[data-testid="stHorizontalBlock"].interview-header-row .interview-header-right {
+    color: white !important;
+}
+
+div[data-testid="stHorizontalBlock"].interview-header-row div[data-testid="stButton"] > button {
     background: rgba(255, 255, 255, 0.96) !important;
     color: #312e81 !important;
     border: none !important;
     font-weight: 600;
-    min-width: 8.5rem;
+    white-space: nowrap;
 }
 
 .interview-header-title { font-size: 1.1rem; font-weight: 600; opacity: 0.9; color: white; }

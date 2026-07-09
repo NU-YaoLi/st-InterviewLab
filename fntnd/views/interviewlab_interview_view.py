@@ -96,37 +96,74 @@ def _timer_class(remaining_seconds: float) -> str:
     return "interview-timer"
 
 
+def _paint_header_card() -> None:
+    """Apply the solid purple background to the header row that contains End Interview."""
+    components.html(
+        """
+        <script>
+        (function() {
+          const doc = window.parent.document;
+          function paint() {
+            const buttons = doc.querySelectorAll('button');
+            let endBtn = null;
+            buttons.forEach((btn) => {
+              const label = (btn.innerText || btn.textContent || "").trim();
+              if (label === "End Interview") endBtn = btn;
+            });
+            if (!endBtn) return false;
+            const row = endBtn.closest('[data-testid="stHorizontalBlock"]');
+            if (!row) return false;
+            row.classList.add("interview-header-row");
+            return true;
+          }
+          let tries = 0;
+          const timer = setInterval(function() {
+            tries += 1;
+            if (paint() || tries > 20) clearInterval(timer);
+          }, 100);
+        })();
+        </script>
+        """,
+        height=0,
+    )
+
+
 def _render_interview_header(state: object) -> None:
-    """Full-width solid purple header; End Interview sits on the right of the card."""
+    """Full-width purple title card with End Interview on the right."""
     timer_cls = _timer_class(get_remaining_seconds(state))
     mode = st.session_state.get("interview_mode", "Behavioral")
     role = get_job_display_label(st.session_state)
     duration = st.session_state.get("interview_duration_minutes", 20)
     timer_text = format_remaining_time(state)
 
-    st.markdown(
-        f"""
-        <div class="interview-header">
-            <div class="interview-header-left">
-                <div class="interview-header-title">{html.escape(str(mode))} Interview · {html.escape(str(role))}</div>
-                <div class="status-badge" style="margin-top:0.5rem">
-                    <span class="status-dot"></span> Live · English voice
-                </div>
+    title_col, timer_col, end_col = st.columns([5.2, 2.2, 1.8], vertical_alignment="center")
+    with title_col:
+        st.markdown(
+            f"""
+            <div class="interview-header-title">{html.escape(str(mode))} Interview · {html.escape(str(role))}</div>
+            <div class="status-badge" style="margin-top:0.5rem">
+                <span class="status-dot"></span> Live · English voice
             </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with timer_col:
+        st.markdown(
+            f"""
             <div class="interview-header-right">
                 <div class="{timer_cls}">{timer_text}</div>
-                <div style="font-size:0.8rem;opacity:0.7;margin-top:0.25rem">
+                <div style="font-size:0.8rem;opacity:0.75;margin-top:0.25rem">
                     {duration} min session
                 </div>
             </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.markdown('<div class="end-interview-anchor"></div>', unsafe_allow_html=True)
-    if st.button("End Interview", type="secondary", key="end_interview_btn"):
-        st.session_state["_show_end_interview_confirm"] = True
-        st.rerun(scope="app")
+            """,
+            unsafe_allow_html=True,
+        )
+    with end_col:
+        if st.button("End Interview", type="secondary", key="end_interview_btn", use_container_width=True):
+            st.session_state["_show_end_interview_confirm"] = True
+            st.rerun(scope="app")
+    _paint_header_card()
 
 
 def _inject_mic_control_script(*, action: str) -> None:
