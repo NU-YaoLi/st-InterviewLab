@@ -163,7 +163,7 @@ def _render_live_caption() -> None:
     )
 
 
-@st.fragment(run_every=2)
+@st.fragment(run_every=1)
 def _timer_fragment(api_key: str) -> None:
     """Auto-refresh timer and expire live captions."""
     _expire_live_caption_if_needed()
