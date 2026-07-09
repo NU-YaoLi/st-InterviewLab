@@ -14,6 +14,7 @@ from bknd.interviewlab_openai import get_openai_client
 from fntnd.interviewlab_errors import (
     display_openai_error,
     queue_validation_error,
+    show_generating_dialog,
     show_queued_validation_error,
     SERVICE_UNAVAILABLE_MESSAGE,
 )
@@ -24,7 +25,7 @@ from fntnd.interviewlab_state import (
     reset_runtime_session,
     state_from_session,
 )
-from fntnd.interviewlab_styles import inject_styles, render_generating_overlay
+from fntnd.interviewlab_styles import inject_styles
 from fntnd.views.interviewlab_evaluation_view import render_evaluation_view
 from fntnd.views.interviewlab_interview_view import render_chat_history, render_interview_view
 from fntnd.views.interviewlab_landing_view import render_setup_view
@@ -32,6 +33,7 @@ from fntnd.views.interviewlab_landing_view import render_setup_view
 
 def _abort_generating() -> None:
     st.session_state.pop("_generating_interview", None)
+    st.session_state.pop("_generating_worker_started", None)
 
 
 def _handle_start_interview(api_key: str) -> None:
@@ -56,12 +58,13 @@ def _handle_start_interview(api_key: str) -> None:
         )
         apply_state_to_session(state, st.session_state)
         st.session_state.pop("_generating_interview", None)
+        st.session_state.pop("_generating_worker_started", None)
         st.session_state["_auto_start_session"] = True
         st.session_state["_autoplay_tts"] = True
         st.session_state["_autoplay_caption"] = first_message
         st.rerun()
     except Exception as exc:
-        st.session_state.pop("_generating_interview", None)
+        _abort_generating()
         display_openai_error(exc)
 
 
@@ -73,8 +76,9 @@ def main() -> None:
     interview_complete = st.session_state.get("interview_complete", False)
 
     if st.session_state.get("_generating_interview"):
-        render_generating_overlay()
-        _handle_start_interview(get_api_key_from_session())
+        show_generating_dialog(
+            lambda: _handle_start_interview(get_api_key_from_session())
+        )
         return
 
     if interview_complete:

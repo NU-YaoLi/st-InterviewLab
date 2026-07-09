@@ -106,3 +106,18 @@ def show_queued_validation_error() -> None:
     message = st.session_state.get("_validation_error")
     if message:
         show_validation_error(message)
+
+
+@st.dialog("Preparing your mock interview")
+def show_generating_dialog(prepare_callback) -> None:
+    """Centered modal shown while the first interview question is generated."""
+    st.markdown(
+        "Tailoring questions to your role and background, then generating "
+        "your first question."
+    )
+    with st.spinner("Please wait…"):
+        if st.session_state.get("_generating_worker_started"):
+            prepare_callback()
+        else:
+            st.session_state["_generating_worker_started"] = True
+            st.rerun(scope="app")

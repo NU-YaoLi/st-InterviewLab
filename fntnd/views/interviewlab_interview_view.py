@@ -16,7 +16,6 @@ from bknd.interviewlab_engine import (
     end_interview_manually,
     force_close_interview,
     format_remaining_time,
-    get_progress_fraction,
     get_remaining_seconds,
     is_time_expired,
     process_user_response,
@@ -205,9 +204,6 @@ def _timer_fragment(api_key: str) -> None:
             """,
             unsafe_allow_html=True,
         )
-
-    progress = get_progress_fraction(state)
-    st.progress(progress, text=f"Session progress · {format_remaining_time(state)} remaining")
 
     if st.session_state.pop("_end_interview_requested", False):
         _handle_end_interview(api_key)
