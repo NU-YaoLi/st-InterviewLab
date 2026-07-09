@@ -5,6 +5,9 @@ Loads ``interviewlab_config``, the ``bknd`` package, and the ``fntnd`` package
 explicitly via ``SourceFileLoader`` and registers them in ``sys.modules`` before
 invoking ``fntnd.interviewlab_ftnd.main()``. Mirrors the loader pattern used in
 st-Quizzly to avoid Python 3.14 dotted-import issues on Streamlit Cloud.
+
+Modules are loaded once per server process — subsequent Streamlit reruns skip
+re-execution to keep button clicks responsive.
 """
 
 from __future__ import annotations
@@ -46,9 +49,12 @@ _REQUIRED_CONFIG_NAMES = (
 )
 
 _CONFIG_SNAPSHOT: dict[str, object] = {}
+_BOOTSTRAPPED = False
 
 
 def _load_module(name: str, file_path: Path) -> None:
+    if name in sys.modules:
+        return
     path_str = str(file_path.resolve())
     if not file_path.is_file():
         raise ImportError(f"Required module missing: {path_str}")
@@ -99,6 +105,8 @@ def _reinforce_config() -> None:
 
 
 def _load_package(name: str, init_path: Path) -> None:
+    if name in sys.modules:
+        return
     if not init_path.is_file():
         raise ImportError(f"Required package init missing: {init_path}")
     pkg_dir = str(init_path.parent)
@@ -121,10 +129,64 @@ def _load_package(name: str, init_path: Path) -> None:
         raise
 
 
-_load_module("interviewlab_config", _root / "interviewlab_config.py")
-_verify_config()
-_snapshot_config()
-_load_package("bknd", _root / "bknd" / "__init__.py")
+def _bootstrap() -> None:
+    global _BOOTSTRAPPED
+    if _BOOTSTRAPPED:
+        _reinforce_config()
+        return
+
+    _load_module("interviewlab_config", _root / "interviewlab_config.py")
+    _verify_config()
+    _snapshot_config()
+    _load_package("bknd", _root / "bknd" / "__init__.py")
+
+    _reinforce_config()
+    _load_module("bknd.interviewlab_openai", _root / "bknd" / "interviewlab_openai.py")
+    _load_module("bknd.interviewlab_audio", _root / "bknd" / "interviewlab_audio.py")
+    _reinforce_config()
+    _load_module("bknd.interviewlab_language", _root / "bknd" / "interviewlab_language.py")
+    _load_module("bknd.interviewlab_resume", _root / "bknd" / "interviewlab_resume.py")
+    _load_module("bknd.interviewlab_engine", _root / "bknd" / "interviewlab_engine.py")
+    _reinforce_config()
+    _load_module("bknd.interviewlab_evaluator", _root / "bknd" / "interviewlab_evaluator.py")
+
+    _load_package("fntnd", _root / "fntnd" / "__init__.py")
+    _reinforce_config()
+    _load_module("fntnd.interviewlab_state", _root / "fntnd" / "interviewlab_state.py")
+    _load_module("fntnd.interviewlab_errors", _root / "fntnd" / "interviewlab_errors.py")
+    _load_module("fntnd.interviewlab_styles", _root / "fntnd" / "interviewlab_styles.py")
+
+    _load_package("fntnd.views", _root / "fntnd" / "views" / "__init__.py")
+    _load_module(
+        "fntnd.views.interviewlab_landing_view",
+        _root / "fntnd" / "views" / "interviewlab_landing_view.py",
+    )
+    _load_module(
+        "fntnd.views.interviewlab_interview_view",
+        _root / "fntnd" / "views" / "interviewlab_interview_view.py",
+    )
+    _load_module(
+        "fntnd.views.interviewlab_evaluation_view",
+        _root / "fntnd" / "views" / "interviewlab_evaluation_view.py",
+    )
+
+    _reinforce_config()
+    _load_module("fntnd.interviewlab_ftnd", _root / "fntnd" / "interviewlab_ftnd.py")
+    _ftnd_mod = sys.modules.get("fntnd.interviewlab_ftnd")
+    if _ftnd_mod is None or not hasattr(_ftnd_mod, "main"):
+        sys.modules.pop("fntnd.interviewlab_ftnd", None)
+        importlib.invalidate_caches()
+        _reinforce_config()
+        _load_module("fntnd.interviewlab_ftnd", _root / "fntnd" / "interviewlab_ftnd.py")
+        _ftnd_mod = sys.modules.get("fntnd.interviewlab_ftnd")
+
+    if _ftnd_mod is None or not hasattr(_ftnd_mod, "main"):
+        raise ImportError("Failed to load fntnd.interviewlab_ftnd.main")
+
+    _BOOTSTRAPPED = True
+
+
+_bootstrap()
 
 import streamlit as st
 
@@ -132,49 +194,7 @@ from interviewlab_config import APP_TITLE
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🎙️", layout="wide")
 
-_reinforce_config()
-_load_module("bknd.interviewlab_openai", _root / "bknd" / "interviewlab_openai.py")
-_load_module("bknd.interviewlab_audio", _root / "bknd" / "interviewlab_audio.py")
-_reinforce_config()
-_load_module("bknd.interviewlab_language", _root / "bknd" / "interviewlab_language.py")
-_load_module("bknd.interviewlab_resume", _root / "bknd" / "interviewlab_resume.py")
-_load_module("bknd.interviewlab_engine", _root / "bknd" / "interviewlab_engine.py")
-_reinforce_config()
-_load_module("bknd.interviewlab_evaluator", _root / "bknd" / "interviewlab_evaluator.py")
-
-_load_package("fntnd", _root / "fntnd" / "__init__.py")
-_reinforce_config()
-_load_module("fntnd.interviewlab_state", _root / "fntnd" / "interviewlab_state.py")
-_load_module("fntnd.interviewlab_errors", _root / "fntnd" / "interviewlab_errors.py")
-_load_module("fntnd.interviewlab_styles", _root / "fntnd" / "interviewlab_styles.py")
-
-_load_package("fntnd.views", _root / "fntnd" / "views" / "__init__.py")
-_load_module(
-    "fntnd.views.interviewlab_landing_view",
-    _root / "fntnd" / "views" / "interviewlab_landing_view.py",
-)
-_load_module(
-    "fntnd.views.interviewlab_interview_view",
-    _root / "fntnd" / "views" / "interviewlab_interview_view.py",
-)
-_load_module(
-    "fntnd.views.interviewlab_evaluation_view",
-    _root / "fntnd" / "views" / "interviewlab_evaluation_view.py",
-)
-
-_reinforce_config()
-_load_module("fntnd.interviewlab_ftnd", _root / "fntnd" / "interviewlab_ftnd.py")
-_ftnd_mod = sys.modules.get("fntnd.interviewlab_ftnd")
-if _ftnd_mod is None or not hasattr(_ftnd_mod, "main"):
-    sys.modules.pop("fntnd.interviewlab_ftnd", None)
-    importlib.invalidate_caches()
-    _reinforce_config()
-    _load_module("fntnd.interviewlab_ftnd", _root / "fntnd" / "interviewlab_ftnd.py")
-    _ftnd_mod = sys.modules.get("fntnd.interviewlab_ftnd")
-
-if _ftnd_mod is None or not hasattr(_ftnd_mod, "main"):
-    raise ImportError("Failed to load fntnd.interviewlab_ftnd.main")
-
+_ftnd_mod = sys.modules["fntnd.interviewlab_ftnd"]
 main = _ftnd_mod.main  # type: ignore[assignment]
 
 if __name__ == "__main__":

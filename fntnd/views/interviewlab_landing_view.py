@@ -71,32 +71,19 @@ def _sync_resume_from_sources(typed_background: str, uploaded_resume) -> None:
         st.session_state["resume_file_name"] = ""
         st.session_state["resume_file_hash"] = None
 
-    st.session_state["resume"] = combine_resume_sources(
+    combined = combine_resume_sources(
         typed_text=typed_background,
         uploaded_text=uploaded_text,
         uploaded_name=uploaded_name,
     )
+    if combined != st.session_state.get("resume"):
+        st.session_state["resume"] = combined
 
 
 def _option_card_label(icon: str, title: str, description: str) -> str:
     if icon:
         return f"{icon}\n\n{title}\n{description}"
     return f"{title}\n{description}"
-
-
-def _inject_active_card_style(active_button_key: str) -> None:
-    st.markdown(
-        f"""
-        <style>
-        .st-key-{active_button_key} button {{
-            background: linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%) !important;
-            border: 2px solid #6366f1 !important;
-            box-shadow: 0 0 0 3px rgba(99,102,241,0.15) !important;
-        }}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
 
 
 def _render_option_card(
@@ -108,11 +95,12 @@ def _render_option_card(
     title: str,
     description: str,
 ) -> None:
+    is_active = st.session_state.get(session_key) == session_value
     st.button(
         _option_card_label(icon, title, description),
         key=button_key,
         use_container_width=True,
-        type="secondary",
+        type="primary" if is_active else "secondary",
         on_click=_set_session_value,
         kwargs={"key": session_key, "value": session_value},
     )
@@ -155,15 +143,60 @@ def _render_hero() -> None:
 
 
 @st.fragment
+def _setup_fields_fragment() -> None:
+    """Job details and background — isolated so typing only reruns this block."""
+    _section_title(
+        "Job Details",
+        "Paste the job title, level, and description — anything that helps tailor your questions.",
+    )
+    job_details = st.text_area(
+        "Job details",
+        value=st.session_state.get("job_description", ""),
+        height=140,
+        placeholder=(
+            "e.g. Senior Software Engineer (Mid-Senior)\n\n"
+            "We are looking for a backend engineer experienced in Python, "
+            "distributed systems, and cloud infrastructure…"
+        ),
+        label_visibility="collapsed",
+    )
+    st.session_state["job_description"] = job_details
+    st.session_state["target_role"] = ""
+    st.session_state["target_level"] = ""
+
+    _section_title(
+        "Your Background",
+        "Paste notes or upload your resume — questions will be tailored to your experience and the job.",
+    )
+
+    typed_background = st.text_area(
+        "Background notes",
+        value=st.session_state.get("resume_typed", st.session_state.get("resume", "")),
+        height=80,
+        placeholder="Or paste a brief summary of your experience, skills, and projects…",
+        label_visibility="collapsed",
+    )
+    st.session_state["resume_typed"] = typed_background
+
+    uploaded_resume = st.file_uploader(
+        "Upload resume (PDF, Word, or TXT)",
+        type=["pdf", "docx", "txt"],
+        help="Optional. We extract text from your resume to personalize interview questions.",
+    )
+
+    _sync_resume_from_sources(typed_background, uploaded_resume)
+
+    resume_file_name = st.session_state.get("resume_file_name", "")
+    if resume_file_name and not uploaded_resume:
+        st.caption(f"Resume loaded: **{resume_file_name}** (upload a new file to replace)")
+
+
+@st.fragment
 def _mode_selector_fragment() -> None:
     _section_title(
         "Interview Type",
         "Choose the style of practice that matches your upcoming interview.",
     )
-
-    current_mode = st.session_state.get("interview_mode", "Behavioral")
-    active_key = f"mode_{current_mode.lower()}"
-    _inject_active_card_style(active_key)
 
     col1, col2 = st.columns(2)
     for col, (mode, key, session_key, icon, desc) in zip((col1, col2), _MODE_OPTIONS):
@@ -185,9 +218,6 @@ def _duration_selector_fragment() -> None:
         "How long your mock interview will run.",
     )
 
-    current_duration = st.session_state.get("interview_duration_minutes", 20)
-    _inject_active_card_style(f"dur_{current_duration}")
-
     cols = st.columns(len(_DURATION_OPTIONS))
     for col, (duration, key, desc) in zip(cols, _DURATION_OPTIONS):
         with col:
@@ -201,55 +231,25 @@ def _duration_selector_fragment() -> None:
             )
 
 
+@st.fragment
+def _start_controls_fragment() -> None:
+    if st.button("Begin Mock Interview →", type="primary", use_container_width=True):
+        if not st.session_state.get("job_description", "").strip():
+            show_validation_error(
+                "Please enter **job details** before starting your mock interview."
+            )
+        else:
+            st.session_state["_generating_interview"] = True
+            st.session_state["ai_voice_enabled"] = True
+            st.rerun(scope="app")
+
+
 def render_setup_view() -> None:
     """Render the full setup form on the main page."""
     _render_hero()
 
     with st.container():
-        _section_title(
-            "Job Details",
-            "Paste the job title, level, and description — anything that helps tailor your questions.",
-        )
-        job_details = st.text_area(
-            "Job details",
-            value=st.session_state.get("job_description", ""),
-            height=140,
-            placeholder=(
-                "e.g. Senior Software Engineer (Mid-Senior)\n\n"
-                "We are looking for a backend engineer experienced in Python, "
-                "distributed systems, and cloud infrastructure…"
-            ),
-            label_visibility="collapsed",
-        )
-        st.session_state["job_description"] = job_details
-        st.session_state["target_role"] = ""
-        st.session_state["target_level"] = ""
-
-        _section_title(
-            "Your Background",
-            "Paste notes or upload your resume — questions will be tailored to your experience and the job.",
-        )
-
-        typed_background = st.text_area(
-            "Background notes",
-            value=st.session_state.get("resume_typed", st.session_state.get("resume", "")),
-            height=80,
-            placeholder="Or paste a brief summary of your experience, skills, and projects…",
-            label_visibility="collapsed",
-        )
-        st.session_state["resume_typed"] = typed_background
-
-        uploaded_resume = st.file_uploader(
-            "Upload resume (PDF, Word, or TXT)",
-            type=["pdf", "docx", "txt"],
-            help="Optional. We extract text from your resume to personalize interview questions.",
-        )
-
-        _sync_resume_from_sources(typed_background, uploaded_resume)
-
-        resume_file_name = st.session_state.get("resume_file_name", "")
-        if resume_file_name and not uploaded_resume:
-            st.caption(f"Resume loaded: **{resume_file_name}** (upload a new file to replace)")
+        _setup_fields_fragment()
 
         st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
         _mode_selector_fragment()
@@ -258,16 +258,7 @@ def render_setup_view() -> None:
         _duration_selector_fragment()
 
         st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
-
-        if st.button("Begin Mock Interview →", type="primary", use_container_width=True):
-            job_details = st.session_state.get("job_description", "").strip()
-            if not job_details:
-                show_validation_error(
-                    "Please enter **job details** before starting your mock interview."
-                )
-            else:
-                st.session_state["_start_requested"] = True
-                st.session_state["ai_voice_enabled"] = True
+        _start_controls_fragment()
 
 
 def render_landing_view() -> None:

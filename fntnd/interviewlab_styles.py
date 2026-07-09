@@ -6,10 +6,9 @@ import streamlit as st
 
 CUSTOM_CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 html, body, [class*="css"] {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 #MainMenu, footer, header { visibility: hidden; }
@@ -20,6 +19,12 @@ html, body, [class*="css"] {
     max-width: 100%;
     padding-left: 2rem;
     padding-right: 2rem;
+}
+
+.page-content-center {
+    max-width: 820px;
+    margin: 0 auto;
+    width: 100%;
 }
 
 .setup-section {
@@ -78,6 +83,14 @@ html, body, [class*="css"] {
     border-color: #a5b4fc !important;
     background: #f5f3ff !important;
     box-shadow: 0 2px 8px rgba(99,102,241,0.1) !important;
+}
+
+[class*="st-key-mode_"] button[kind="primary"],
+[class*="st-key-dur_"] button[kind="primary"] {
+    background: linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%) !important;
+    border: 2px solid #6366f1 !important;
+    color: #1e293b !important;
+    box-shadow: 0 0 0 3px rgba(99,102,241,0.15) !important;
 }
 
 .hero-section {
@@ -531,4 +544,7 @@ def render_generating_overlay() -> None:
 
 
 def inject_styles() -> None:
+    if st.session_state.get("_styles_injected"):
+        return
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+    st.session_state["_styles_injected"] = True
