@@ -13,17 +13,15 @@ html, body, [class*="css"] {
 
 #MainMenu, footer, header { visibility: hidden; }
 
-.block-container {
+/* Center all page content — works with @st.fragment (columns do not). */
+section.main > div.block-container {
+    max-width: 68rem !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
     padding-top: 1.5rem;
     padding-bottom: 2rem;
-    max-width: 100%;
-    padding-left: 1.5rem;
-    padding-right: 1.5rem;
-}
-
-/* Side gutters for the centered middle column (1:4:1 layout) */
-[data-testid="column"]:empty {
-    min-height: 1px;
+    padding-left: max(1.5rem, 5vw);
+    padding-right: max(1.5rem, 5vw);
 }
 
 .setup-section {
