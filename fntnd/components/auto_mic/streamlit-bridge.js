@@ -28,7 +28,7 @@
     RENDER_EVENT: RENDER,
     events: { addEventListener, dispatchEvent },
     setComponentReady() {
-      sendMessage({ type: COMPONENT_READY });
+      sendMessage({ type: COMPONENT_READY, apiVersion: 1 });
     },
     setFrameHeight(height) {
       sendMessage({ type: SET_FRAME_HEIGHT, height });

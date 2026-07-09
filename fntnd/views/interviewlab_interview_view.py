@@ -68,6 +68,7 @@ def _expire_live_caption_if_needed() -> None:
             and st.session_state.get("interview_phase") == "interviewer_speaking"
         ):
             st.session_state["interview_phase"] = "listening"
+            st.session_state["mic_auto_start"] = True
         _clear_live_caption()
 
 
