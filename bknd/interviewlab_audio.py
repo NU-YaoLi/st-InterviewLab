@@ -71,9 +71,9 @@ def transcribe_audio(client: OpenAI, audio_path: Path) -> str:
             pass
 
 
-def transcribe_audio_bytes(client: OpenAI, audio_bytes: bytes) -> str:
+def transcribe_audio_bytes(client: OpenAI, audio_bytes: bytes, *, suffix: str = ".wav") -> str:
     """Save bytes to a temp file, transcribe, and clean up."""
-    path = save_uploaded_audio(audio_bytes)
+    path = save_uploaded_audio(audio_bytes, suffix=suffix)
     return transcribe_audio(client, path)
 
 

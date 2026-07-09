@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import base64
-import hashlib
 import html
 import math
 import time
@@ -26,8 +25,9 @@ from bknd.interviewlab_evaluator import run_evaluation
 from bknd.interviewlab_language import NON_ENGLISH_UI_MESSAGE, is_english_text
 from bknd.interviewlab_openai import get_openai_client
 from fntnd.interviewlab_errors import display_openai_error
+from fntnd.interviewlab_mic_component import render_auto_mic
 from fntnd.interviewlab_state import apply_state_to_session, get_job_display_label, state_from_session
-from interviewlab_config import ANSWER_COOLDOWN_SECONDS, PER_TURN_EVALUATION
+from interviewlab_config import PER_TURN_EVALUATION, SILENCE_SUBMIT_SECONDS
 
 
 def render_chat_history() -> None:
@@ -75,31 +75,23 @@ def _timer_class(remaining_seconds: float) -> str:
     return "interview-timer"
 
 
-def _read_audio_input(key: str = "candidate_audio") -> bytes | None:
-    if not hasattr(st, "audio_input"):
-        return None
-
-    audio_value = st.audio_input(
-        "Record your answer in English",
-        key=key,
-        label_visibility="collapsed",
-    )
-    if audio_value is None:
-        return None
-    if hasattr(audio_value, "read"):
-        audio_value.seek(0)
-        return audio_value.read()
-    if isinstance(audio_value, bytes):
-        return audio_value
-    return None
-
-
-def _audio_hash(audio_bytes: bytes) -> str:
-    return hashlib.md5(audio_bytes).hexdigest()
+def _decode_mic_payload(payload: object) -> tuple[bytes, str]:
+    if not payload or (isinstance(payload, dict) and payload.get("error")):
+        return b"", ".wav"
+    if isinstance(payload, dict):
+        data_url = str(payload.get("audio") or "")
+        mime = str(payload.get("mime") or "audio/webm")
+    else:
+        data_url = str(payload)
+        mime = "audio/webm"
+    suffix = ".webm" if "webm" in mime else ".wav"
+    if "," in data_url:
+        return base64.b64decode(data_url.split(",", 1)[1]), suffix
+    return b"", suffix
 
 
 def _play_tts_autoplay(audio_bytes: bytes | None, caption_text: str = "") -> None:
-    """Play interviewer audio and scroll the mic into view when speech ends."""
+    """Play interviewer audio, then automatically open the candidate microphone."""
     if not audio_bytes:
         return
     b64 = base64.b64encode(audio_bytes).decode()
@@ -110,20 +102,7 @@ def _play_tts_autoplay(audio_bytes: bytes | None, caption_text: str = "") -> Non
         (function() {{
             const audio = new Audio("data:audio/mpeg;base64,{b64}");
             audio.playsInline = true;
-            const playPromise = audio.play();
-            if (playPromise !== undefined) {{
-                playPromise.catch(function() {{
-                    const btn = window.parent.document.querySelector('button[kind="primary"]');
-                    if (btn) btn.focus();
-                }});
-            }}
-            audio.addEventListener("ended", function() {{
-                const doc = window.parent.document;
-                const mic = doc.querySelector('[data-testid="stAudioInput"]');
-                if (mic) {{
-                    mic.scrollIntoView({{ behavior: "smooth", block: "center" }});
-                }}
-            }});
+            audio.play().catch(function() {{}});
         }})();
         </script>
         """,
@@ -131,7 +110,8 @@ def _play_tts_autoplay(audio_bytes: bytes | None, caption_text: str = "") -> Non
     )
     if caption_text:
         _set_live_caption("interviewer", caption_text, duration=speech_seconds)
-        st.session_state["interview_phase"] = "listening"
+    st.session_state["interview_phase"] = "listening"
+    st.session_state["_mic_start_at"] = time.time() + speech_seconds + 0.35
 
 
 def _render_meeting_room() -> None:
@@ -242,32 +222,10 @@ def _timer_fragment(api_key: str) -> None:
 
 
 @st.fragment(run_every=1)
-def _cooldown_fragment(api_key: str) -> None:
-    """Count down the pause between answers before the next interviewer question."""
-    if st.session_state.get("interview_phase") != "cooldown":
-        return
-
-    remaining = st.session_state.get("next_question_at", 0) - time.time()
-    if remaining > 0:
-        seconds_left = max(1, math.ceil(remaining))
-        st.markdown(
-            f"""
-            <div class="cooldown-banner">
-                Thanks for your answer. The interviewer will continue in
-                <strong>{seconds_left}s</strong>.
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        return
-
-    answer_text = st.session_state.pop("pending_answer_text", "")
-    st.session_state["interview_phase"] = "listening"
-    st.session_state.pop("pending_answer_audio", None)
-    st.session_state.pop("last_audio_hash", None)
-    if answer_text.strip():
-        _process_answer(api_key, answer_text)
-    else:
+def _mic_wait_fragment() -> None:
+    """Refresh while waiting for interviewer speech to finish before opening the mic."""
+    mic_start_at = st.session_state.get("_mic_start_at")
+    if not mic_start_at or time.time() >= mic_start_at:
         st.rerun(scope="app")
 
 
@@ -363,6 +321,9 @@ def _process_answer(api_key: str, user_answer: str) -> None:
                 run_evaluation(client, state)
 
         apply_state_to_session(state, st.session_state)
+        if result.get("action") != "complete":
+            st.session_state["mic_turn_id"] = st.session_state.get("mic_turn_id", 0) + 1
+        st.session_state.pop("last_mic_payload", None)
         st.rerun(scope="app")
 
     except Exception as exc:
@@ -389,75 +350,80 @@ def _handle_begin_session(api_key: str) -> None:
         display_openai_error(exc)
 
 
-def _submit_finished_answer(api_key: str) -> None:
-    audio_bytes = st.session_state.get("pending_answer_audio")
+def _transcribe_and_submit(api_key: str, audio_bytes: bytes, *, suffix: str) -> None:
     if not audio_bytes:
-        st.warning("Record your answer with the microphone first, then tap finished.")
+        st.warning("No audio was captured. Please try again.")
+        st.session_state["mic_auto_start"] = True
         return
 
     try:
         client = get_openai_client(api_key)
         with st.spinner("Transcribing your response…"):
-            transcribed = transcribe_audio_bytes(client, audio_bytes)
+            transcribed = transcribe_audio_bytes(client, audio_bytes, suffix=suffix)
 
         if not transcribed.strip():
             st.warning("Couldn't detect speech. Please try again and speak clearly in English.")
+            st.session_state["mic_auto_start"] = True
             return
 
         if not is_english_text(transcribed):
             st.warning(NON_ENGLISH_UI_MESSAGE)
 
-        _set_live_caption("you", transcribed, duration=float(ANSWER_COOLDOWN_SECONDS))
-        st.session_state["pending_answer_text"] = transcribed
-        st.session_state["next_question_at"] = time.time() + ANSWER_COOLDOWN_SECONDS
-        st.session_state["interview_phase"] = "cooldown"
-        st.session_state.pop("pending_answer_audio", None)
-        st.rerun(scope="app")
+        _set_live_caption("you", transcribed, duration=4.0)
+        _process_answer(api_key, transcribed)
     except Exception as exc:
         _clear_live_caption()
         display_openai_error(exc)
 
 
 def _render_voice_input(api_key: str) -> None:
-    if not hasattr(st, "audio_input"):
-        st.error(
-            "Voice interviews require Streamlit >= 1.33 with microphone support. "
-            "Please upgrade Streamlit and allow microphone access in your browser."
-        )
+    if st.session_state.get("interview_phase") != "listening":
         return
 
-    if st.session_state.get("interview_phase") == "cooldown":
-        _cooldown_fragment(api_key)
+    mic_start_at = st.session_state.get("_mic_start_at")
+    if mic_start_at and time.time() < mic_start_at:
+        seconds_left = max(1, math.ceil(mic_start_at - time.time()))
+        st.markdown(
+            f'<p class="mic-active-hint">🎤 Interviewer speaking… '
+            f"your microphone opens in <strong>{seconds_left}s</strong>.</p>",
+            unsafe_allow_html=True,
+        )
         return
 
     st.markdown(
-        '<p class="mic-active-hint">🎙️ Your turn — speak your answer. '
-        "The microphone is ready below.</p>",
+        '<p class="mic-active-hint">🎙️ Your turn — the microphone is live. '
+        f"Speak naturally, click finished, or stay quiet for {SILENCE_SUBMIT_SECONDS}s.</p>",
         unsafe_allow_html=True,
     )
 
-    audio_bytes = _read_audio_input()
-    if audio_bytes:
-        audio_hash = _audio_hash(audio_bytes)
-        if audio_hash != st.session_state.get("last_audio_hash"):
-            st.session_state["last_audio_hash"] = audio_hash
-            st.session_state["pending_answer_audio"] = audio_bytes
-            _set_live_caption("you", "Recording your answer…", duration=None)
+    turn_id = st.session_state.get("mic_turn_id", 0)
+    auto_start = st.session_state.pop("mic_auto_start", False)
+    if mic_start_at and time.time() >= mic_start_at:
+        st.session_state.pop("_mic_start_at", None)
+        auto_start = True
 
-    has_recording = bool(st.session_state.get("pending_answer_audio"))
-    if st.button(
-        "I'm finished with this answer →",
-        type="primary",
-        use_container_width=True,
-        disabled=not has_recording,
-    ):
-        _submit_finished_answer(api_key)
+    stop_now = st.session_state.pop("_stop_mic_now", False)
 
-    if not has_recording:
-        st.caption(
-            "Allow microphone access when prompted, then speak. "
-            "Click **I'm finished with this answer** when you're done."
-        )
+    mic_payload = render_auto_mic(
+        auto_start=auto_start,
+        stop_now=stop_now,
+        silence_seconds=SILENCE_SUBMIT_SECONDS,
+        key=f"auto_mic_{turn_id}",
+    )
+
+    if isinstance(mic_payload, dict) and mic_payload.get("error") == "mic_denied":
+        st.error("Microphone access is required. Allow the mic in your browser and refresh.")
+        return
+
+    if mic_payload and mic_payload != st.session_state.get("last_mic_payload"):
+        st.session_state["last_mic_payload"] = mic_payload
+        audio_bytes, suffix = _decode_mic_payload(mic_payload)
+        _transcribe_and_submit(api_key, audio_bytes, suffix=suffix)
+        return
+
+    if st.button("I'm finished with this answer →", type="primary", use_container_width=True):
+        st.session_state["_stop_mic_now"] = True
+        st.rerun(scope="app")
 
 
 def render_interview_view(api_key: str) -> None:
@@ -477,9 +443,14 @@ def render_interview_view(api_key: str) -> None:
         elif caption:
             _set_live_caption("interviewer", caption, duration=_estimate_speech_seconds(caption))
             st.session_state["interview_phase"] = "listening"
+            st.session_state["_mic_start_at"] = time.time() + _estimate_speech_seconds(caption) + 0.35
 
     if session_started:
         _timer_fragment(api_key)
+        if st.session_state.get("interview_phase") == "listening" and st.session_state.get(
+            "_mic_start_at"
+        ):
+            _mic_wait_fragment()
         _render_voice_input(api_key)
         return
 

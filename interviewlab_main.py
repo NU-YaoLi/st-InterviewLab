@@ -155,6 +155,7 @@ def _bootstrap() -> None:
     _load_module("fntnd.interviewlab_state", _root / "fntnd" / "interviewlab_state.py")
     _load_module("fntnd.interviewlab_errors", _root / "fntnd" / "interviewlab_errors.py")
     _load_module("fntnd.interviewlab_styles", _root / "fntnd" / "interviewlab_styles.py")
+_load_module("fntnd.interviewlab_mic_component", _root / "fntnd" / "interviewlab_mic_component.py")
 
     _load_package("fntnd.views", _root / "fntnd" / "views" / "__init__.py")
     _load_module(

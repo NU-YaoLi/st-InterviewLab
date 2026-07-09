@@ -54,8 +54,9 @@ INTERVIEW_MODES = ("Behavioral", "Technical")
 # Voice-only spoken interviews (English).
 SUPPORTED_INTERVIEW_LANGUAGE = "English"
 
-# Pause after the candidate finishes an answer before the next interviewer question.
+# Auto-submit the candidate's answer after this many seconds of silence.
 ANSWER_COOLDOWN_SECONDS = 15
+SILENCE_SUBMIT_SECONDS = ANSWER_COOLDOWN_SECONDS
 
 # Default session keys — mirrored by ``fntnd.interviewlab_state.init_session_state``.
 SESSION_DEFAULTS: dict[str, Any] = {
@@ -98,6 +99,11 @@ SESSION_DEFAULTS: dict[str, Any] = {
     "pending_answer_text": None,
     "next_question_at": None,
     "_auto_start_session": False,
+    "mic_turn_id": 0,
+    "mic_auto_start": False,
+    "_stop_mic_now": False,
+    "last_mic_payload": None,
+    "_mic_start_at": None,
 }
 
 # -------------------
