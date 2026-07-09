@@ -17,14 +17,13 @@ html, body, [class*="css"] {
     padding-top: 1.5rem;
     padding-bottom: 2rem;
     max-width: 100%;
-    padding-left: 2rem;
-    padding-right: 2rem;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
 }
 
-.page-content-center {
-    max-width: 820px;
-    margin: 0 auto;
-    width: 100%;
+/* Side gutters for the centered middle column (1:4:1 layout) */
+[data-testid="column"]:empty {
+    min-height: 1px;
 }
 
 .setup-section {
