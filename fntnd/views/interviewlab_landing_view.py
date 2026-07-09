@@ -7,7 +7,7 @@ import hashlib
 import streamlit as st
 
 from bknd.interviewlab_resume import ResumeParseError, combine_resume_sources, extract_resume_text
-from fntnd.interviewlab_errors import show_validation_error
+from fntnd.interviewlab_errors import queue_validation_error, show_validation_error
 
 _MODE_OPTIONS = [
     (

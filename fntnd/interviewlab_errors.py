@@ -93,7 +93,7 @@ def show_validation_error(message: str) -> None:
     st.error(message)
     if st.button("OK", type="primary", use_container_width=True):
         st.session_state.pop("_validation_error", None)
-        st.rerun()
+        st.rerun(scope="app")
 
 
 def queue_validation_error(message: str) -> None:

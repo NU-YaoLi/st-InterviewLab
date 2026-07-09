@@ -541,7 +541,5 @@ def render_generating_overlay() -> None:
 
 
 def inject_styles() -> None:
-    if st.session_state.get("_styles_version") == 2:
-        return
+    """Inject layout/CSS every run — Streamlit rebuilds the page on each rerun."""
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
-    st.session_state["_styles_version"] = 2
