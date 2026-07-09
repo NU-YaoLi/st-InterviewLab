@@ -158,6 +158,18 @@ def _apply_realtime_payload(payload: object) -> None:
         return
     st.session_state["last_realtime_payload"] = payload
 
+    status = payload.get("status")
+    # Ignore iframe remount reattach pings that don't change transcript length.
+    if status == "reattached":
+        transcript = payload.get("transcript")
+        if isinstance(transcript, list):
+            st.session_state["realtime_transcript"] = [
+                {"role": m.get("role"), "content": m.get("content", "")}
+                for m in transcript
+                if isinstance(m, dict) and m.get("role") in ("assistant", "user")
+            ]
+        return
+
     transcript = payload.get("transcript")
     if isinstance(transcript, list):
         st.session_state["realtime_transcript"] = [
@@ -165,6 +177,12 @@ def _apply_realtime_payload(payload: object) -> None:
             for m in transcript
             if isinstance(m, dict) and m.get("role") in ("assistant", "user")
         ]
+        # Prefer the latest completed interviewer turn as the sticky question caption.
+        for msg in reversed(st.session_state["realtime_transcript"]):
+            if msg.get("role") == "assistant" and msg.get("content"):
+                st.session_state["live_caption_text"] = msg["content"]
+                st.session_state["live_caption_speaker"] = "interviewer"
+                break
 
     speaker = payload.get("active_speaker")
     if speaker == "you":
@@ -176,21 +194,27 @@ def _apply_realtime_payload(payload: object) -> None:
 
     caption = payload.get("caption") or {}
     if isinstance(caption, dict) and caption.get("text"):
-        st.session_state["live_caption_text"] = caption.get("text")
-        cap_speaker = caption.get("speaker")
-        st.session_state["live_caption_speaker"] = (
-            "you" if cap_speaker == "you" else "interviewer"
-        )
+        # Only overwrite sticky caption for interviewer completed text.
+        if caption.get("speaker") != "you":
+            st.session_state["live_caption_text"] = caption.get("text")
+            st.session_state["live_caption_speaker"] = "interviewer"
 
     event_type = payload.get("type")
     if event_type == "error":
         err = str(payload.get("error") or "realtime_error")
+        # Keep a single sticky error; avoid stacking on every remount.
         if err == "mic_denied":
-            st.error("Microphone access is required. Allow the mic in your browser and refresh.")
-        else:
-            st.error("Live interview connection issue. Please end and try again.")
+            st.session_state["_realtime_error"] = (
+                "Microphone access is required. Allow the mic in your browser and refresh."
+            )
+        elif err in ("sdp_failed", "connect_failed", "missing_ephemeral_key"):
+            st.session_state["_realtime_error"] = (
+                "Live interview connection issue. Click End Interview, then start a new session."
+            )
     elif event_type == "interview_complete" and not st.session_state.get("_disconnect_realtime"):
         st.session_state["_realtime_natural_complete"] = True
+    elif payload.get("connected"):
+        st.session_state.pop("_realtime_error", None)
 
 
 def _finalize_and_evaluate(api_key: str, *, closing_note: str | None = None) -> None:
@@ -290,11 +314,12 @@ def render_interview_view(api_key: str) -> None:
     disconnect = bool(st.session_state.get("_disconnect_realtime"))
     session_id = int(st.session_state.get("realtime_session_id") or 1)
 
+    # Stable widget key for the whole interview — remounts must not mint a new key.
     payload = render_realtime_interview(
         ephemeral_key=str(ephemeral),
         session_id=session_id,
         disconnect=disconnect,
-        key=f"realtime_{session_id}",
+        key="realtime_live_session",
     )
     _apply_realtime_payload(payload)
 
@@ -304,6 +329,10 @@ def render_interview_view(api_key: str) -> None:
         st.session_state["_do_finalize"] = pending_finalize
         st.rerun()
         return
+
+    err = st.session_state.get("_realtime_error")
+    if err:
+        st.error(err)
 
     st.markdown(
         '<p class="mic-active-hint">🎙️ Live Realtime interview — speak naturally. '

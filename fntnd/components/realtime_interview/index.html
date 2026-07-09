@@ -10,8 +10,8 @@
     }
     .panel {
       display: flex;
-      align-items: center;
-      gap: 0.75rem;
+      flex-direction: column;
+      gap: 0.45rem;
       padding: 0.9rem 1rem;
       border-radius: 12px;
       border: 1px solid #c7d2fe;
@@ -19,6 +19,11 @@
       color: #312e81;
       font-size: 0.92rem;
       font-weight: 600;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
     }
     .dot {
       width: 10px;
@@ -36,6 +41,14 @@
       animation: pulse 0.9s infinite;
     }
     .dot.error { background: #ef4444; animation: none; }
+    .caption {
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: #4338ca;
+      line-height: 1.35;
+      max-height: 3.2em;
+      overflow: hidden;
+    }
     @keyframes pulse {
       0%, 100% { opacity: 1; transform: scale(1); }
       50% { opacity: 0.45; transform: scale(0.85); }
@@ -44,8 +57,11 @@
 </head>
 <body>
   <div class="panel">
-    <div id="dot" class="dot"></div>
-    <div id="status">Connecting live interview…</div>
+    <div class="row">
+      <div id="dot" class="dot"></div>
+      <div id="status">Connecting live interview…</div>
+    </div>
+    <div id="caption" class="caption"></div>
   </div>
   <script>
     (function () {
@@ -103,41 +119,69 @@
     const Streamlit = window.Streamlit;
     const statusEl = document.getElementById("status");
     const dotEl = document.getElementById("dot");
+    const captionEl = document.getElementById("caption");
 
-    let pc = null;
-    let dc = null;
-    let localStream = null;
-    let remoteAudio = null;
-    let startedSessionId = null;
-    let disconnectRequested = false;
-    let assistantBuffer = "";
-    let userBuffer = "";
-    let transcript = [];
-    let activeSpeaker = "none";
+    // Persist WebRTC across Streamlit remounts (setComponentValue remounts the iframe).
+    const STORE_KEY = "__interviewlabRealtimeSessions";
+    if (!window.parent[STORE_KEY]) {
+      window.parent[STORE_KEY] = {};
+    }
+    const store = window.parent[STORE_KEY];
+
+    let sessionId = null;
     let lastEmitKey = "";
+    let starting = false;
+
+    function session() {
+      if (sessionId == null) return null;
+      return store[sessionId] || null;
+    }
+
+    function ensureSession(id) {
+      if (!store[id]) {
+        store[id] = {
+          pc: null,
+          dc: null,
+          localStream: null,
+          remoteAudio: null,
+          transcript: [],
+          assistantBuffer: "",
+          userBuffer: "",
+          activeSpeaker: "none",
+          connected: false,
+          disconnectRequested: false,
+          ephemeralKey: "",
+          handlersBound: false,
+        };
+      }
+      return store[id];
+    }
 
     function setStatus(text, mode) {
       statusEl.textContent = text;
       dotEl.className = "dot" + (mode ? " " + mode : "");
     }
 
-    function emit(extra) {
+    function setCaption(text) {
+      captionEl.textContent = text || "";
+      Streamlit.setFrameHeight(text ? 88 : 56);
+    }
+
+    function emitToStreamlit(s, extra) {
+      // Only push completed-turn snapshots to Python. Frequent emits remount this iframe.
       const payload = Object.assign(
         {
           type: "realtime_update",
-          transcript: transcript.slice(),
-          active_speaker: activeSpeaker,
+          transcript: (s.transcript || []).slice(),
+          active_speaker: s.activeSpeaker,
           caption: {
-            speaker: activeSpeaker === "you" ? "you" : "interviewer",
+            speaker: s.activeSpeaker === "you" ? "you" : "interviewer",
             text:
-              activeSpeaker === "you"
-                ? userBuffer
-                : assistantBuffer ||
-                  (transcript.length
-                    ? transcript[transcript.length - 1].content
-                    : ""),
+              (s.transcript && s.transcript.length
+                ? s.transcript[s.transcript.length - 1].content
+                : "") || "",
           },
-          connected: !!(pc && pc.connectionState !== "closed"),
+          connected: !!s.connected,
         },
         extra || {}
       );
@@ -147,65 +191,67 @@
       Streamlit.setComponentValue(payload);
     }
 
-    function pushTurn(role, content) {
+    function pushTurn(s, role, content) {
       const text = (content || "").trim();
       if (!text) return;
-      const last = transcript[transcript.length - 1];
+      const last = s.transcript[s.transcript.length - 1];
       if (last && last.role === role && last.content === text) return;
-      transcript.push({ role: role, content: text });
-      emit();
+      s.transcript.push({ role: role, content: text });
+      setCaption(text);
+      emitToStreamlit(s);
     }
 
-    async function cleanup() {
-      try {
-        if (dc) dc.close();
-      } catch (e) {}
-      dc = null;
-      if (pc) {
+    function bindDataChannel(s) {
+      if (!s.dc || s.handlersBound) return;
+      s.handlersBound = true;
+
+      s.dc.addEventListener("message", function (e) {
         try {
-          pc.getSenders().forEach((s) => {
-            try {
-              if (s.track) s.track.stop();
-            } catch (e) {}
-          });
-          pc.close();
-        } catch (e) {}
-      }
-      pc = null;
-      if (localStream) {
-        localStream.getTracks().forEach((t) => t.stop());
-        localStream = null;
-      }
-      if (remoteAudio) {
-        try {
-          remoteAudio.pause();
-          remoteAudio.srcObject = null;
-        } catch (e) {}
-        remoteAudio = null;
+          handleServerEvent(s, JSON.parse(e.data));
+        } catch (err) {}
+      });
+
+      if (s.dc.readyState === "open") {
+        onChannelOpen(s);
+      } else {
+        s.dc.addEventListener("open", function () {
+          onChannelOpen(s);
+        });
       }
     }
 
-    function handleServerEvent(event) {
+    function onChannelOpen(s) {
+      s.connected = true;
+      setStatus("Live — speak naturally with your interviewer", "live");
+      // Only kick off the first response once per session.
+      if (!s.startedResponse) {
+        s.startedResponse = true;
+        try {
+          s.dc.send(JSON.stringify({ type: "response.create" }));
+        } catch (e) {}
+        emitToStreamlit(s, { status: "connected" });
+      }
+    }
+
+    function handleServerEvent(s, event) {
       const type = event.type || "";
 
       if (type === "session.created" || type === "session.updated") {
         setStatus("Live — speak naturally with your interviewer", "live");
-        activeSpeaker = "interviewer";
-        emit({ status: "session_ready" });
+        s.activeSpeaker = "interviewer";
         return;
       }
 
       if (type === "input_audio_buffer.speech_started") {
-        activeSpeaker = "you";
-        userBuffer = "";
+        s.activeSpeaker = "you";
+        s.userBuffer = "";
         setStatus("Listening to you…", "live");
-        emit();
+        setCaption("");
         return;
       }
 
       if (type === "input_audio_buffer.speech_stopped") {
         setStatus("Interviewer is thinking…", "speaking");
-        emit();
         return;
       }
 
@@ -213,9 +259,9 @@
         type === "conversation.item.input_audio_transcription.delta" ||
         type === "conversation.item.input_audio_transcription.delta.v2"
       ) {
-        userBuffer += event.delta || "";
-        activeSpeaker = "you";
-        emit();
+        s.userBuffer += event.delta || "";
+        s.activeSpeaker = "you";
+        setCaption(s.userBuffer);
         return;
       }
 
@@ -223,9 +269,9 @@
         type === "conversation.item.input_audio_transcription.completed" ||
         type === "conversation.item.input_audio_transcription.completed.v2"
       ) {
-        const text = event.transcript || userBuffer;
-        pushTurn("user", text);
-        userBuffer = "";
+        const text = event.transcript || s.userBuffer;
+        pushTurn(s, "user", text);
+        s.userBuffer = "";
         return;
       }
 
@@ -233,10 +279,10 @@
         type === "response.output_audio_transcript.delta" ||
         type === "response.audio_transcript.delta"
       ) {
-        assistantBuffer += event.delta || "";
-        activeSpeaker = "interviewer";
+        s.assistantBuffer += event.delta || "";
+        s.activeSpeaker = "interviewer";
         setStatus("Interviewer speaking…", "speaking");
-        emit();
+        setCaption(s.assistantBuffer);
         return;
       }
 
@@ -244,27 +290,31 @@
         type === "response.output_audio_transcript.done" ||
         type === "response.audio_transcript.done"
       ) {
-        const text = event.transcript || assistantBuffer;
-        pushTurn("assistant", text);
-        assistantBuffer = "";
-        activeSpeaker = "interviewer";
+        const text = event.transcript || s.assistantBuffer;
+        pushTurn(s, "assistant", text);
+        s.assistantBuffer = "";
+        s.activeSpeaker = "interviewer";
         setStatus("Your turn — speak when ready", "live");
-        emit();
         return;
       }
 
       if (type === "response.done") {
-        if (assistantBuffer.trim()) {
-          pushTurn("assistant", assistantBuffer);
-          assistantBuffer = "";
+        if (s.assistantBuffer.trim()) {
+          pushTurn(s, "assistant", s.assistantBuffer);
+          s.assistantBuffer = "";
         }
-        const lower = (transcript.length ? transcript[transcript.length - 1].content : "").toLowerCase();
+        const lower = (
+          s.transcript.length ? s.transcript[s.transcript.length - 1].content : ""
+        ).toLowerCase();
         if (
           lower.includes("interview has concluded") ||
-          lower.includes("that concludes") ||
-          lower.includes("thank you for your time")
+          lower.includes("that concludes our interview") ||
+          lower.includes("that concludes the interview")
         ) {
-          emit({ type: "interview_complete", transcript: transcript.slice() });
+          emitToStreamlit(s, {
+            type: "interview_complete",
+            transcript: s.transcript.slice(),
+          });
         }
         return;
       }
@@ -273,124 +323,208 @@
         const msg =
           (event.error && (event.error.message || event.error.code)) ||
           "Realtime session error";
+        // Ignore transient errors that don't kill the peer connection.
+        if (s.pc && s.pc.connectionState === "connected") {
+          console.warn("Realtime event error:", msg);
+          return;
+        }
         setStatus(String(msg), "error");
-        emit({ type: "error", error: String(msg) });
+        emitToStreamlit(s, { type: "error", error: String(msg) });
       }
     }
 
-    async function startSession(ephemeralKey, sessionId) {
+    async function cleanupSession(id) {
+      const s = store[id];
+      if (!s) return;
+      try {
+        if (s.dc) s.dc.close();
+      } catch (e) {}
+      if (s.pc) {
+        try {
+          s.pc.getSenders().forEach((sender) => {
+            try {
+              if (sender.track) sender.track.stop();
+            } catch (e) {}
+          });
+          s.pc.close();
+        } catch (e) {}
+      }
+      if (s.localStream) {
+        s.localStream.getTracks().forEach((t) => t.stop());
+      }
+      if (s.remoteAudio) {
+        try {
+          s.remoteAudio.pause();
+          s.remoteAudio.srcObject = null;
+          if (s.remoteAudio.parentNode) s.remoteAudio.parentNode.removeChild(s.remoteAudio);
+        } catch (e) {}
+      }
+      delete store[id];
+    }
+
+    function reattachUi(s) {
+      s.handlersBound = false;
+      if (s.dc) bindDataChannel(s);
+      if (s.connected) {
+        setStatus(
+          s.activeSpeaker === "you"
+            ? "Listening to you…"
+            : "Live — speak naturally with your interviewer",
+          s.activeSpeaker === "interviewer" && s.assistantBuffer ? "speaking" : "live"
+        );
+      }
+      const caption =
+        s.activeSpeaker === "you"
+          ? s.userBuffer
+          : s.assistantBuffer ||
+            (s.transcript.length ? s.transcript[s.transcript.length - 1].content : "");
+      setCaption(caption);
+      // Do NOT emit to Streamlit on reattach — that remounts this iframe again.
+    }
+
+    async function startSession(ephemeralKey, id) {
       if (!ephemeralKey) {
         setStatus("Missing live session key.", "error");
-        emit({ type: "error", error: "missing_ephemeral_key" });
         return;
       }
-      if (startedSessionId === sessionId && pc) return;
 
-      await cleanup();
-      startedSessionId = sessionId;
-      disconnectRequested = false;
-      transcript = [];
-      assistantBuffer = "";
-      userBuffer = "";
-      activeSpeaker = "interviewer";
+      const existing = store[id];
+      if (
+        existing &&
+        existing.pc &&
+        existing.connected &&
+        !existing.disconnectRequested &&
+        ["connected", "connecting"].includes(existing.pc.connectionState)
+      ) {
+        sessionId = id;
+        reattachUi(existing);
+        return;
+      }
+
+      if (starting) return;
+      starting = true;
+      sessionId = id;
+      const s = ensureSession(id);
+      s.ephemeralKey = ephemeralKey;
+      s.disconnectRequested = false;
+      s.handlersBound = false;
       setStatus("Connecting microphone…", "");
 
       try {
-        localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (!s.localStream) {
+          s.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        }
       } catch (err) {
+        starting = false;
         setStatus("Microphone access is required for the interview.", "error");
-        emit({ type: "error", error: "mic_denied" });
+        emitToStreamlit(s, { type: "error", error: "mic_denied" });
         return;
       }
 
-      pc = new RTCPeerConnection();
-      remoteAudio = document.createElement("audio");
-      remoteAudio.autoplay = true;
-      remoteAudio.playsInline = true;
-      document.body.appendChild(remoteAudio);
-      pc.ontrack = (e) => {
-        remoteAudio.srcObject = e.streams[0];
-        remoteAudio.play().catch(function () {});
-      };
-      localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+      try {
+        if (s.pc) {
+          try {
+            s.pc.close();
+          } catch (e) {}
+        }
+        s.pc = new RTCPeerConnection();
+        if (!s.remoteAudio) {
+          s.remoteAudio = document.createElement("audio");
+          s.remoteAudio.autoplay = true;
+          s.remoteAudio.playsInline = true;
+        }
+        // Keep audio element on the parent document so remounts don't kill playback.
+        if (!s.remoteAudio.isConnected) {
+          window.parent.document.body.appendChild(s.remoteAudio);
+        }
+        s.pc.ontrack = (e) => {
+          s.remoteAudio.srcObject = e.streams[0];
+          s.remoteAudio.play().catch(function () {});
+        };
+        s.localStream.getTracks().forEach((track) => s.pc.addTrack(track, s.localStream));
 
-      dc = pc.createDataChannel("oai-events");
-      dc.addEventListener("open", function () {
-        setStatus("Connected — interview starting…", "live");
-        // Ask the model to begin with the welcome + first question.
-        try {
-          dc.send(
-            JSON.stringify({
-              type: "response.create",
-            })
-          );
-        } catch (e) {}
-        emit({ status: "connected" });
-      });
-      dc.addEventListener("message", function (e) {
-        try {
-          handleServerEvent(JSON.parse(e.data));
-        } catch (err) {}
-      });
+        s.dc = s.pc.createDataChannel("oai-events");
+        bindDataChannel(s);
 
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
+        const offer = await s.pc.createOffer();
+        await s.pc.setLocalDescription(offer);
 
-      const sdpResponse = await fetch("https://api.openai.com/v1/realtime/calls", {
-        method: "POST",
-        body: offer.sdp,
-        headers: {
-          Authorization: "Bearer " + ephemeralKey,
-          "Content-Type": "application/sdp",
-        },
-      });
-
-      if (!sdpResponse.ok) {
-        const detail = await sdpResponse.text();
-        setStatus("Could not start live interview session.", "error");
-        emit({
-          type: "error",
-          error: "sdp_failed",
-          detail: detail.slice(0, 300),
+        const sdpResponse = await fetch("https://api.openai.com/v1/realtime/calls", {
+          method: "POST",
+          body: offer.sdp,
+          headers: {
+            Authorization: "Bearer " + ephemeralKey,
+            "Content-Type": "application/sdp",
+          },
         });
-        await cleanup();
-        return;
-      }
 
-      const answer = { type: "answer", sdp: await sdpResponse.text() };
-      await pc.setRemoteDescription(answer);
-      setStatus("Live — speak naturally with your interviewer", "live");
-      emit({ status: "webrtc_ready" });
+        if (!sdpResponse.ok) {
+          const detail = await sdpResponse.text();
+          setStatus("Could not start live interview session.", "error");
+          emitToStreamlit(s, {
+            type: "error",
+            error: "sdp_failed",
+            detail: detail.slice(0, 300),
+          });
+          await cleanupSession(id);
+          starting = false;
+          return;
+        }
+
+        const answer = { type: "answer", sdp: await sdpResponse.text() };
+        await s.pc.setRemoteDescription(answer);
+        s.connected = true;
+        setStatus("Live — speak naturally with your interviewer", "live");
+      } catch (err) {
+        setStatus("Could not start live interview session.", "error");
+        emitToStreamlit(s, {
+          type: "error",
+          error: "connect_failed",
+          detail: String(err && err.message ? err.message : err),
+        });
+        await cleanupSession(id);
+      } finally {
+        starting = false;
+      }
     }
 
     async function stopSession(reason) {
-      disconnectRequested = true;
-      if (assistantBuffer.trim()) pushTurn("assistant", assistantBuffer);
-      if (userBuffer.trim()) pushTurn("user", userBuffer);
-      await cleanup();
-      startedSessionId = null;
+      const s = session();
+      if (!s) return;
+      s.disconnectRequested = true;
+      if (s.assistantBuffer.trim()) pushTurn(s, "assistant", s.assistantBuffer);
+      if (s.userBuffer.trim()) pushTurn(s, "user", s.userBuffer);
+      const transcriptCopy = s.transcript.slice();
+      const id = sessionId;
+      await cleanupSession(id);
+      sessionId = null;
       setStatus("Interview session ended", "");
-      emit({
+      setCaption("");
+      Streamlit.setComponentValue({
         type: reason === "complete" ? "interview_complete" : "disconnected",
-        transcript: transcript.slice(),
+        transcript: transcriptCopy,
+        active_speaker: "none",
+        caption: { speaker: "interviewer", text: "" },
+        connected: false,
       });
     }
 
     function onRender(event) {
       const args = (event.detail && event.detail.args) || {};
       const ephemeralKey = args.ephemeral_key || "";
-      const sessionId = Number(args.session_id || 0);
+      const id = Number(args.session_id || 0);
       const disconnect = !!args.disconnect;
 
-      Streamlit.setFrameHeight(56);
+      Streamlit.setFrameHeight(captionEl.textContent ? 88 : 56);
 
       if (disconnect) {
+        if (sessionId == null && id) sessionId = id;
         stopSession("end");
         return;
       }
 
-      if (ephemeralKey && sessionId && startedSessionId !== sessionId) {
-        startSession(ephemeralKey, sessionId);
+      if (ephemeralKey && id) {
+        startSession(ephemeralKey, id);
       }
     }
 
