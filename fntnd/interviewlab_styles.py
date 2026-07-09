@@ -92,8 +92,8 @@ section.main > div.block-container {
 
 .hero-section {
     text-align: center;
-    padding: 2.5rem 1rem 2rem;
-    margin-bottom: 1.5rem;
+    padding: 1rem 1rem 1.25rem;
+    margin-bottom: 1rem;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -388,6 +388,34 @@ section.main > div.block-container {
     padding: 2rem 1rem;
 }
 
+.mic-active-hint {
+    color: #4338ca;
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-align: center;
+    padding: 0.75rem 1rem;
+    margin: 0.5rem 0 1rem;
+    background: #eef2ff;
+    border-radius: 12px;
+    border: 1px solid #c7d2fe;
+}
+
+.cooldown-banner {
+    text-align: center;
+    padding: 1.25rem 1rem;
+    margin: 1rem 0;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    color: #475569;
+    font-size: 0.95rem;
+}
+
+.cooldown-banner strong {
+    color: #4338ca;
+    font-size: 1.25rem;
+}
+
 .eval-hero {
     text-align: center;
     padding: 2rem 1rem;
@@ -471,14 +499,24 @@ section[data-testid="stSidebar"] { display: none; }
 .feature-text { font-size: 0.8rem; color: #64748b; font-weight: 500; }
 
 .generating-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 4rem 2rem;
-    margin: 2rem auto;
-    max-width: 420px;
+    padding: 2rem;
+    margin: 0;
+    max-width: none;
     text-align: center;
+    background: rgba(250, 251, 252, 0.94);
+    backdrop-filter: blur(6px);
+}
+
+.generating-overlay-card {
+    max-width: 420px;
+    width: 100%;
 }
 
 .generating-spinner {
@@ -524,15 +562,17 @@ def render_generating_overlay() -> None:
     st.markdown(
         """
         <div class="generating-overlay">
-            <div class="generating-spinner">
-                <div class="generating-square"></div>
-                <div class="generating-square"></div>
-                <div class="generating-square"></div>
-                <div class="generating-square"></div>
-            </div>
-            <div class="generating-title">Preparing your mock interview</div>
-            <div class="generating-subtitle">
-                Tailoring questions to your role and generating the first question…
+            <div class="generating-overlay-card">
+                <div class="generating-spinner">
+                    <div class="generating-square"></div>
+                    <div class="generating-square"></div>
+                    <div class="generating-square"></div>
+                    <div class="generating-square"></div>
+                </div>
+                <div class="generating-title">Preparing your mock interview</div>
+                <div class="generating-subtitle">
+                    Tailoring questions to your role and generating the first question…
+                </div>
             </div>
         </div>
         """,

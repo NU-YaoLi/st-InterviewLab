@@ -56,6 +56,9 @@ def _handle_start_interview(api_key: str) -> None:
         )
         apply_state_to_session(state, st.session_state)
         st.session_state.pop("_generating_interview", None)
+        st.session_state["_auto_start_session"] = True
+        st.session_state["_autoplay_tts"] = True
+        st.session_state["_autoplay_caption"] = first_message
         st.rerun()
     except Exception as exc:
         st.session_state.pop("_generating_interview", None)

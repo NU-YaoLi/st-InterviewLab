@@ -54,6 +54,9 @@ INTERVIEW_MODES = ("Behavioral", "Technical")
 # Voice-only spoken interviews (English).
 SUPPORTED_INTERVIEW_LANGUAGE = "English"
 
+# Pause after the candidate finishes an answer before the next interviewer question.
+ANSWER_COOLDOWN_SECONDS = 15
+
 # Default session keys — mirrored by ``fntnd.interviewlab_state.init_session_state``.
 SESSION_DEFAULTS: dict[str, Any] = {
     "openai_api_key": "",
@@ -90,6 +93,11 @@ SESSION_DEFAULTS: dict[str, Any] = {
     "live_caption_speaker": None,
     "live_caption_expires_at": None,
     "active_speaker": None,
+    "interview_phase": "listening",
+    "pending_answer_audio": None,
+    "pending_answer_text": None,
+    "next_question_at": None,
+    "_auto_start_session": False,
 }
 
 # -------------------

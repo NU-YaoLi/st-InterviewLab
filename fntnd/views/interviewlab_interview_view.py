@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import html
+import math
 import time
 
 import streamlit as st
@@ -26,7 +27,7 @@ from bknd.interviewlab_language import NON_ENGLISH_UI_MESSAGE, is_english_text
 from bknd.interviewlab_openai import get_openai_client
 from fntnd.interviewlab_errors import display_openai_error
 from fntnd.interviewlab_state import apply_state_to_session, get_job_display_label, state_from_session
-from interviewlab_config import PER_TURN_EVALUATION
+from interviewlab_config import ANSWER_COOLDOWN_SECONDS, PER_TURN_EVALUATION
 
 
 def render_chat_history() -> None:
@@ -98,20 +99,39 @@ def _audio_hash(audio_bytes: bytes) -> str:
 
 
 def _play_tts_autoplay(audio_bytes: bytes | None, caption_text: str = "") -> None:
-    """Play interviewer audio and keep caption visible for estimated speech duration."""
+    """Play interviewer audio and scroll the mic into view when speech ends."""
     if not audio_bytes:
         return
     b64 = base64.b64encode(audio_bytes).decode()
+    speech_seconds = _estimate_speech_seconds(caption_text) if caption_text else 8.0
     components.html(
         f"""
-        <audio autoplay playsinline style="display:none">
-            <source src="data:audio/mpeg;base64,{b64}" type="audio/mpeg">
-        </audio>
+        <script>
+        (function() {{
+            const audio = new Audio("data:audio/mpeg;base64,{b64}");
+            audio.playsInline = true;
+            const playPromise = audio.play();
+            if (playPromise !== undefined) {{
+                playPromise.catch(function() {{
+                    const btn = window.parent.document.querySelector('button[kind="primary"]');
+                    if (btn) btn.focus();
+                }});
+            }}
+            audio.addEventListener("ended", function() {{
+                const doc = window.parent.document;
+                const mic = doc.querySelector('[data-testid="stAudioInput"]');
+                if (mic) {{
+                    mic.scrollIntoView({{ behavior: "smooth", block: "center" }});
+                }}
+            }});
+        }})();
+        </script>
         """,
         height=0,
     )
     if caption_text:
-        _set_live_caption("interviewer", caption_text, duration=_estimate_speech_seconds(caption_text))
+        _set_live_caption("interviewer", caption_text, duration=speech_seconds)
+        st.session_state["interview_phase"] = "listening"
 
 
 def _render_meeting_room() -> None:
@@ -163,7 +183,7 @@ def _render_live_caption() -> None:
     )
 
 
-@st.fragment(run_every=1)
+@st.fragment(run_every=2)
 def _timer_fragment(api_key: str) -> None:
     """Auto-refresh timer and expire live captions."""
     _expire_live_caption_if_needed()
@@ -221,7 +241,37 @@ def _timer_fragment(api_key: str) -> None:
     _render_live_caption()
 
 
-def _render_ready_header() -> None:
+@st.fragment(run_every=1)
+def _cooldown_fragment(api_key: str) -> None:
+    """Count down the pause between answers before the next interviewer question."""
+    if st.session_state.get("interview_phase") != "cooldown":
+        return
+
+    remaining = st.session_state.get("next_question_at", 0) - time.time()
+    if remaining > 0:
+        seconds_left = max(1, math.ceil(remaining))
+        st.markdown(
+            f"""
+            <div class="cooldown-banner">
+                Thanks for your answer. The interviewer will continue in
+                <strong>{seconds_left}s</strong>.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        return
+
+    answer_text = st.session_state.pop("pending_answer_text", "")
+    st.session_state["interview_phase"] = "listening"
+    st.session_state.pop("pending_answer_audio", None)
+    st.session_state.pop("last_audio_hash", None)
+    if answer_text.strip():
+        _process_answer(api_key, answer_text)
+    else:
+        st.rerun(scope="app")
+
+
+def _render_live_header() -> None:
     mode = st.session_state.get("interview_mode", "Behavioral")
     role = get_job_display_label(st.session_state)
     duration = st.session_state.get("interview_duration_minutes", 20)
@@ -232,13 +282,13 @@ def _render_ready_header() -> None:
             <div>
                 <div class="interview-header-title">{mode} Interview · {role}</div>
                 <div class="status-badge" style="margin-top:0.5rem">
-                    Ready · English voice
+                    <span class="status-dot"></span> Starting · English voice
                 </div>
             </div>
             <div style="text-align:right">
                 <div class="interview-timer">{duration:02d}:00</div>
                 <div style="font-size:0.8rem;opacity:0.7;margin-top:0.25rem">
-                    Press Start when you're ready
+                    Interview starting…
                 </div>
             </div>
         </div>
@@ -258,7 +308,7 @@ def _handle_time_expiry(api_key: str, state) -> None:
             run_evaluation(client, state)
         _clear_live_caption()
         apply_state_to_session(state, st.session_state)
-        st.rerun()
+        st.rerun(scope="app")
     except Exception as exc:
         display_openai_error(exc)
 
@@ -272,7 +322,7 @@ def _handle_end_interview(api_key: str) -> None:
             run_evaluation(client, state)
         _clear_live_caption()
         apply_state_to_session(state, st.session_state)
-        st.rerun()
+        st.rerun(scope="app")
     except Exception as exc:
         display_openai_error(exc)
 
@@ -306,13 +356,14 @@ def _process_answer(api_key: str, user_answer: str) -> None:
             if state.last_tts_audio:
                 st.session_state["_autoplay_tts"] = True
                 st.session_state["_autoplay_caption"] = message
+                st.session_state["interview_phase"] = "interviewer_speaking"
 
         if result.get("action") == "complete":
             with st.spinner("Generating your evaluation…"):
                 run_evaluation(client, state)
 
         apply_state_to_session(state, st.session_state)
-        st.rerun()
+        st.rerun(scope="app")
 
     except Exception as exc:
         _clear_live_caption()
@@ -329,48 +380,42 @@ def _handle_begin_session(api_key: str) -> None:
             last_message = state.chat_history[-1]["content"]
             state.last_tts_audio = generate_speech(client, last_message)
             st.session_state["_autoplay_caption"] = last_message
+            st.session_state["interview_phase"] = "interviewer_speaking"
 
         apply_state_to_session(state, st.session_state)
         st.session_state["_autoplay_tts"] = True
-        st.rerun()
+        st.rerun(scope="app")
     except Exception as exc:
         display_openai_error(exc)
 
 
-def render_interview_view(api_key: str) -> None:
-    session_started = st.session_state.get("interview_session_started", False)
-
-    if session_started and st.session_state.pop("_autoplay_tts", False):
-        audio = st.session_state.get("last_tts_audio")
-        caption = st.session_state.pop("_autoplay_caption", "")
-        if audio:
-            _play_tts_autoplay(audio, caption)
-            st.session_state["last_tts_audio"] = None
-
-    if session_started:
-        _timer_fragment(api_key)
-    else:
-        _render_ready_header()
-        _render_meeting_room()
-
-    if not session_started:
-        st.markdown(
-            '<p class="meeting-idle-hint">'
-            'When you start, the interviewer will speak automatically. '
-            'Live captions appear only while someone is speaking.</p>',
-            unsafe_allow_html=True,
-        )
-        if st.button("Start Interview", type="primary", use_container_width=True):
-            _handle_begin_session(api_key)
+def _submit_finished_answer(api_key: str) -> None:
+    audio_bytes = st.session_state.get("pending_answer_audio")
+    if not audio_bytes:
+        st.warning("Record your answer with the microphone first, then tap finished.")
         return
 
-    st.markdown(
-        '<p style="color:#64748b;font-size:0.85rem;text-align:center;margin:0.75rem 0">'
-        '🎙️ Tap the microphone below to record your answer in English</p>',
-        unsafe_allow_html=True,
-    )
+    try:
+        client = get_openai_client(api_key)
+        with st.spinner("Transcribing your response…"):
+            transcribed = transcribe_audio_bytes(client, audio_bytes)
 
-    _render_voice_input(api_key)
+        if not transcribed.strip():
+            st.warning("Couldn't detect speech. Please try again and speak clearly in English.")
+            return
+
+        if not is_english_text(transcribed):
+            st.warning(NON_ENGLISH_UI_MESSAGE)
+
+        _set_live_caption("you", transcribed, duration=float(ANSWER_COOLDOWN_SECONDS))
+        st.session_state["pending_answer_text"] = transcribed
+        st.session_state["next_question_at"] = time.time() + ANSWER_COOLDOWN_SECONDS
+        st.session_state["interview_phase"] = "cooldown"
+        st.session_state.pop("pending_answer_audio", None)
+        st.rerun(scope="app")
+    except Exception as exc:
+        _clear_live_caption()
+        display_openai_error(exc)
 
 
 def _render_voice_input(api_key: str) -> None:
@@ -381,36 +426,66 @@ def _render_voice_input(api_key: str) -> None:
         )
         return
 
+    if st.session_state.get("interview_phase") == "cooldown":
+        _cooldown_fragment(api_key)
+        return
+
+    st.markdown(
+        '<p class="mic-active-hint">🎙️ Your turn — speak your answer. '
+        "The microphone is ready below.</p>",
+        unsafe_allow_html=True,
+    )
+
     audio_bytes = _read_audio_input()
+    if audio_bytes:
+        audio_hash = _audio_hash(audio_bytes)
+        if audio_hash != st.session_state.get("last_audio_hash"):
+            st.session_state["last_audio_hash"] = audio_hash
+            st.session_state["pending_answer_audio"] = audio_bytes
+            _set_live_caption("you", "Recording your answer…", duration=None)
 
-    if not audio_bytes:
+    has_recording = bool(st.session_state.get("pending_answer_audio"))
+    if st.button(
+        "I'm finished with this answer →",
+        type="primary",
+        use_container_width=True,
+        disabled=not has_recording,
+    ):
+        _submit_finished_answer(api_key)
+
+    if not has_recording:
+        st.caption(
+            "Allow microphone access when prompted, then speak. "
+            "Click **I'm finished with this answer** when you're done."
+        )
+
+
+def render_interview_view(api_key: str) -> None:
+    session_started = st.session_state.get("interview_session_started", False)
+
+    if st.session_state.pop("_auto_start_session", False) and not session_started:
+        _handle_begin_session(api_key)
         return
 
-    audio_hash = _audio_hash(audio_bytes)
-    last_hash = st.session_state.get("last_audio_hash")
+    if session_started and st.session_state.pop("_autoplay_tts", False):
+        audio = st.session_state.get("last_tts_audio")
+        caption = st.session_state.pop("_autoplay_caption", "")
+        if audio:
+            st.audio(audio, format="audio/mpeg")
+            _play_tts_autoplay(audio, caption)
+            st.session_state["last_tts_audio"] = None
+        elif caption:
+            _set_live_caption("interviewer", caption, duration=_estimate_speech_seconds(caption))
+            st.session_state["interview_phase"] = "listening"
 
-    if audio_hash == last_hash:
+    if session_started:
+        _timer_fragment(api_key)
+        _render_voice_input(api_key)
         return
 
-    st.session_state["last_audio_hash"] = audio_hash
-    _set_live_caption("you", "Processing your response…", duration=15.0)
-
-    try:
-        client = get_openai_client(api_key)
-        with st.spinner("Transcribing your response…"):
-            transcribed = transcribe_audio_bytes(client, audio_bytes)
-        if not transcribed.strip():
-            _clear_live_caption()
-            st.warning("Couldn't detect speech. Please try again and speak clearly in English.")
-            return
-
-        _set_live_caption("you", transcribed, duration=4.0)
-
-        if not is_english_text(transcribed):
-            st.warning(NON_ENGLISH_UI_MESSAGE)
-            _process_answer(api_key, transcribed)
-            return
-        _process_answer(api_key, transcribed)
-    except Exception as exc:
-        _clear_live_caption()
-        display_openai_error(exc)
+    _render_live_header()
+    _render_meeting_room()
+    st.markdown(
+        '<p class="meeting-idle-hint">Starting your interview now…</p>',
+        unsafe_allow_html=True,
+    )
