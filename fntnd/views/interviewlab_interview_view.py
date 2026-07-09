@@ -343,6 +343,10 @@ def render_interview_view(api_key: str) -> None:
     )
     _apply_realtime_payload(payload)
 
+    if st.session_state.pop("_just_connected", False):
+        st.rerun()
+        return
+
     reason = _should_finalize_now()
     if reason:
         st.session_state.pop("_pending_finalize", None)
