@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import html
+
 import streamlit as st
 
 from bknd.interviewlab_evaluator import get_dimension_labels, run_evaluation
 from bknd.interviewlab_openai import get_openai_client
 from fntnd.interviewlab_errors import display_openai_error
-from fntnd.interviewlab_state import apply_state_to_session, get_api_key_from_session, get_job_display_label, state_from_session
+from fntnd.interviewlab_state import (
+    apply_state_to_session,
+    get_api_key_from_session,
+    get_job_display_label,
+    state_from_session,
+)
 
 
 def render_evaluation_view() -> None:
@@ -39,10 +46,10 @@ def render_evaluation_view() -> None:
     st.markdown(
         f"""
         <div class="eval-hero">
-            <div class="eval-score-big">{overall}</div>
+            <div class="eval-score-big">{html.escape(str(overall))}</div>
             <div class="eval-score-label">Overall Score out of 100</div>
             <p style="color:#64748b;margin-top:1rem;font-size:0.9rem">
-                {mode} · {role} · {duration} min session · {answer_count} responses
+                {html.escape(str(mode))} · {html.escape(str(role))} · {duration} min session · {answer_count} responses
             </p>
         </div>
         """,
@@ -63,8 +70,8 @@ def render_evaluation_view() -> None:
             st.markdown(
                 f"""
                 <div class="metric-card">
-                    <div class="metric-value">{score}<span style="font-size:1rem;color:#94a3b8">/10</span></div>
-                    <div class="metric-label">{label}</div>
+                    <div class="metric-value">{html.escape(str(score))}<span style="font-size:1rem;color:#94a3b8">/10</span></div>
+                    <div class="metric-label">{html.escape(str(label))}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -75,13 +82,13 @@ def render_evaluation_view() -> None:
     fb_col1, fb_col2 = st.columns(2)
     with fb_col1:
         strengths_html = "".join(
-            f"<li>{item}</li>" for item in results.get("strengths", [])
+            f"<li>{html.escape(str(item))}</li>" for item in results.get("strengths", [])
         )
         st.markdown(
             f"""
             <div class="feedback-card strengths-card">
-                <h4>✅ What went well</h4>
-                <ul>{strengths_html}</ul>
+                <h4>What went well</h4>
+                <ul>{strengths_html or "<li>No strengths recorded.</li>"}</ul>
             </div>
             """,
             unsafe_allow_html=True,
@@ -89,13 +96,13 @@ def render_evaluation_view() -> None:
 
     with fb_col2:
         improvements_html = "".join(
-            f"<li>{item}</li>" for item in results.get("improvements", [])
+            f"<li>{html.escape(str(item))}</li>" for item in results.get("improvements", [])
         )
         st.markdown(
             f"""
             <div class="feedback-card improvements-card">
-                <h4>📈 Areas to improve</h4>
-                <ul>{improvements_html}</ul>
+                <h4>Areas to improve</h4>
+                <ul>{improvements_html or "<li>No improvements recorded.</li>"}</ul>
             </div>
             """,
             unsafe_allow_html=True,
@@ -104,7 +111,7 @@ def render_evaluation_view() -> None:
     sample = results.get("sample_answer", "")
     if sample:
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("#### 💡 Sample Optimized Answer")
+        st.markdown("#### Sample Optimized Answer")
         st.info(sample)
 
     turn_evals = st.session_state.get("turn_evaluations", [])
@@ -116,6 +123,7 @@ def render_evaluation_view() -> None:
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("Start New Interview", type="primary", use_container_width=True):
         from fntnd.interviewlab_state import reset_runtime_session
+
         reset_runtime_session()
         st.rerun()
 

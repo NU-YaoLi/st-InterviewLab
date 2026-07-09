@@ -34,6 +34,7 @@ def build_realtime_instructions(state: InterviewState) -> str:
         "- Wait for the candidate to finish speaking before asking the next question.\n"
         "- When the interview should end (final answer complete, or you are told time is up), "
         "thank the candidate and clearly say that the interview has concluded.\n"
+        "- Prefer ending with the exact phrase: \"This interview has concluded.\"\n"
         "- Do not mention that you are an AI model or that this uses a realtime API.\n"
     )
 
@@ -52,7 +53,7 @@ def build_realtime_session_config(state: InterviewState) -> dict[str, Any]:
                         "type": "server_vad",
                         "create_response": True,
                         "interrupt_response": True,
-                    # Wait before treating the candidate's turn as finished.
+                        # Wait before treating the candidate's turn as finished.
                         "silence_duration_ms": REALTIME_SILENCE_DURATION_MS,
                         "prefix_padding_ms": 300,
                         "threshold": 0.5,
@@ -101,7 +102,6 @@ def prepare_realtime_interview(state: InterviewState) -> None:
     reset_interview_state(state)
     state.interview_active = True
     state.total_questions = questions_for_duration(state.interview_duration_minutes)
-    state.ai_voice_enabled = True
 
 
 def sync_transcript_to_state(
@@ -117,21 +117,34 @@ def sync_transcript_to_state(
 
     responses: list[dict[str, Any]] = []
     pending_question = ""
+    pending_is_follow_up = False
     question_index = 0
+    just_answered = False
     for msg in state.chat_history:
         if msg["role"] == "assistant":
-            pending_question = msg["content"]
+            content = msg["content"]
+            # Heuristic: short probe right after a candidate answer = follow-up.
+            pending_is_follow_up = (
+                just_answered
+                and len(content.split()) <= 28
+                and "?" in content
+            )
+            pending_question = content
+            just_answered = False
         elif msg["role"] == "user" and pending_question:
-            question_index += 1
+            if not pending_is_follow_up:
+                question_index += 1
             responses.append(
                 {
-                    "question_index": question_index,
+                    "question_index": question_index or 1,
                     "question": pending_question,
                     "answer": msg["content"],
-                    "is_follow_up": False,
+                    "is_follow_up": pending_is_follow_up,
                 }
             )
+            just_answered = True
             pending_question = ""
+            pending_is_follow_up = False
 
     state.responses = responses
     state.current_question_index = question_index

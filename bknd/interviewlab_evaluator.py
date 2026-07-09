@@ -166,35 +166,6 @@ def _call_evaluation_llm(
         raise RuntimeError(f"Could not parse evaluation response: {exc}") from exc
 
 
-def evaluate_turn(
-    client: OpenAI,
-    state: InterviewState,
-    latest_question: str,
-    latest_answer: str,
-) -> dict[str, Any]:
-    if not (latest_answer or "").strip():
-        return {
-            "overall_score": 0,
-            "dimension_scores": dict(EMPTY_INTERVIEW_RESULT["dimension_scores"]),
-            "strengths": [],
-            "improvements": ["No answer was recorded for this turn."],
-            "sample_answer": "",
-            "feedback": "No answer was recorded for this turn.",
-        }
-
-    ctx = state.to_context()
-    user_content = (
-        f"Mode: {ctx.mode}\n"
-        f"Job details (relevance only — do not score the resume/job text itself):\n"
-        f"{ctx.job_description or '(none)'}\n\n"
-        f"Latest question:\n{latest_question}\n\n"
-        f"Latest answer:\n{latest_answer}\n\n"
-        f"Prior transcript:\n{_format_transcript(state)}\n\n"
-        "Score only what the candidate said in the latest answer."
-    )
-    return _call_evaluation_llm(client, ctx.mode, user_content)
-
-
 def evaluate_full_interview(
     client: OpenAI,
     state: InterviewState,
@@ -229,16 +200,7 @@ def evaluate_full_interview(
 def run_evaluation(
     client: OpenAI,
     state: InterviewState,
-    *,
-    per_turn: bool = False,
-    latest_question: str | None = None,
-    latest_answer: str | None = None,
 ) -> dict[str, Any]:
-    if per_turn and latest_question and latest_answer:
-        result = evaluate_turn(client, state, latest_question, latest_answer)
-        state.turn_evaluations.append(result)
-        return result
-
     result = evaluate_full_interview(client, state)
     state.evaluation_results = result
     state.scores = result

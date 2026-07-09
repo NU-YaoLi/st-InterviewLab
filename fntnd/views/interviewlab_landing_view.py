@@ -52,7 +52,7 @@ def _sync_resume_from_sources(typed_background: str, uploaded_resume) -> None:
 
     if uploaded_resume is not None:
         file_bytes = uploaded_resume.getvalue()
-        file_hash = hashlib.md5(file_bytes).hexdigest()
+        file_hash = hashlib.sha256(file_bytes).hexdigest()
         if file_hash != st.session_state.get("resume_file_hash"):
             try:
                 uploaded_text = extract_resume_text(uploaded_resume)
@@ -165,7 +165,7 @@ def _setup_fields_fragment() -> None:
     st.session_state["target_level"] = ""
 
     _section_title(
-        "Your Background(optional)",
+        "Your Background (optional)",
         "Paste notes or upload your resume — questions will be tailored to your experience and the job.",
     )
 
@@ -241,7 +241,6 @@ def _start_controls_fragment() -> None:
             st.rerun(scope="app")
         else:
             st.session_state["_generating_interview"] = True
-            st.session_state["ai_voice_enabled"] = True
             st.rerun(scope="app")
 
 
@@ -260,8 +259,3 @@ def render_setup_view() -> None:
 
         st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
         _start_controls_fragment()
-
-
-def render_landing_view() -> None:
-    """Alias for setup view — kept for backward compatibility."""
-    render_setup_view()

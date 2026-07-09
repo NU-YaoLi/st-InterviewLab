@@ -30,17 +30,11 @@ REALTIME_VOICE = "alloy"
 # Silence before the interviewer treats your answer as finished (server VAD).
 REALTIME_SILENCE_DURATION_MS = 5000
 
-# Legacy audio models (unused by the live Realtime path; kept for reference).
-WHISPER_MODEL = "gpt-4o-transcribe"
-WHISPER_FALLBACK_MODEL = "whisper-1"
-TTS_MODEL = "gpt-4o-mini-tts"
-TTS_FALLBACK_MODEL = "tts-1"
-TTS_VOICE = "alloy"
-
 # -------------------
 # Interview settings
 # -------------------
 
+# Fallback question count when duration mapping is unavailable.
 TOTAL_QUESTIONS = 5
 
 # Interview duration options (minutes).
@@ -50,9 +44,6 @@ DEFAULT_DURATION_MINUTES = 20
 # Approximate minutes per main question — used to derive question count from duration.
 MINUTES_PER_QUESTION = 4
 
-# When True, evaluation runs after each answer; when False, only at the end.
-PER_TURN_EVALUATION = False
-
 INTERVIEW_MODES = ("Behavioral", "Technical")
 
 # Voice-only spoken interviews (English).
@@ -60,7 +51,6 @@ SUPPORTED_INTERVIEW_LANGUAGE = "English"
 
 # Default session keys — mirrored by ``fntnd.interviewlab_state.init_session_state``.
 SESSION_DEFAULTS: dict[str, Any] = {
-    "openai_api_key": "",
     "interview_active": False,
     "interview_complete": False,
     "interview_mode": "Behavioral",
@@ -72,7 +62,6 @@ SESSION_DEFAULTS: dict[str, Any] = {
     "resume_file_text": "",
     "resume_file_name": "",
     "resume_file_hash": None,
-    "ai_voice_enabled": True,
     "chat_history": [],
     "current_question_index": 0,
     "total_questions": TOTAL_QUESTIONS,
@@ -83,12 +72,10 @@ SESSION_DEFAULTS: dict[str, Any] = {
     "scores": None,
     "evaluation_results": None,
     "turn_evaluations": [],
-    "last_tts_audio": None,
     "error_message": None,
     "interview_duration_minutes": DEFAULT_DURATION_MINUTES,
     "interview_started_at": None,
     "interview_session_started": False,
-    "setup_complete": False,
     "live_caption_text": None,
     "live_caption_speaker": None,
     "active_speaker": None,
@@ -155,20 +142,6 @@ Rules:
 - Do not reveal scoring criteria during the interview.
 - Scale difficulty to the stated level (Junior / Mid / Senior).
 """ + ENGLISH_ONLY_RULE
-
-FOLLOW_UP_SYSTEM_PROMPT = """You are reviewing the candidate's latest answer during an English-only mock interview.
-
-Determine whether a brief follow-up is needed:
-- Behavioral mode: check if the answer lacks concrete detail, personal ownership, or a clear outcome. If so, ask ONE short natural follow-up (e.g. "What was the measurable result?" or "What was your specific role?"). Do NOT mention STAR or answer frameworks.
-- Technical mode: check depth and accuracy. If shallow, ask ONE short clarifying or probing question.
-
-Respond in JSON only with this schema:
-{
-  "needs_follow_up": true or false,
-  "reason": "brief explanation",
-  "follow_up_question": "one short follow-up question if needs_follow_up is true, else empty string"
-}
-"""
 
 # -------------------
 # Evaluation rubrics

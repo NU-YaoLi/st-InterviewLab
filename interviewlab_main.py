@@ -33,16 +33,10 @@ _REQUIRED_CONFIG_NAMES = (
     "REALTIME_MODEL",
     "REALTIME_VOICE",
     "REALTIME_SILENCE_DURATION_MS",
-    "WHISPER_MODEL",
-    "WHISPER_FALLBACK_MODEL",
-    "TTS_MODEL",
-    "TTS_FALLBACK_MODEL",
-    "TTS_VOICE",
     "TOTAL_QUESTIONS",
     "DURATION_OPTIONS",
     "DEFAULT_DURATION_MINUTES",
     "MINUTES_PER_QUESTION",
-    "PER_TURN_EVALUATION",
     "INTERVIEW_MODES",
     "SUPPORTED_INTERVIEW_LANGUAGE",
     "SESSION_DEFAULTS",
@@ -145,8 +139,6 @@ def _bootstrap() -> None:
 
     _reinforce_config()
     _load_module("bknd.interviewlab_openai", _root / "bknd" / "interviewlab_openai.py")
-    _load_module("bknd.interviewlab_audio", _root / "bknd" / "interviewlab_audio.py")
-    _reinforce_config()
     _load_module("bknd.interviewlab_language", _root / "bknd" / "interviewlab_language.py")
     _load_module("bknd.interviewlab_resume", _root / "bknd" / "interviewlab_resume.py")
     _load_module("bknd.interviewlab_engine", _root / "bknd" / "interviewlab_engine.py")

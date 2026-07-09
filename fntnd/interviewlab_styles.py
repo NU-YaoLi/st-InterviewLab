@@ -140,101 +140,8 @@ section.main > div.block-container {
     text-align: center;
 }
 
-.setup-card {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 16px;
-    padding: 1.75rem;
-    margin-bottom: 1.25rem;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(99,102,241,0.06);
-}
-
-.setup-card-title {
-    font-size: 1rem;
-    font-weight: 700;
-    color: #1e293b;
-    margin: 0 0 0.25rem 0;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.setup-card-desc {
-    font-size: 0.85rem;
-    color: #94a3b8;
-    margin: 0 0 1rem 0;
-}
-
-.mode-card {
-    background: #f8fafc;
-    border: 2px solid #e2e8f0;
-    border-radius: 12px;
-    padding: 1.25rem;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    height: 100%;
-}
-
-.mode-card:hover {
-    border-color: #a5b4fc;
-    background: #f5f3ff;
-}
-
-.mode-card-active {
-    background: linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%);
-    border: 2px solid #6366f1;
-    box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
-}
-
-.mode-icon { font-size: 2rem; margin-bottom: 0.5rem; }
-.mode-label { font-weight: 700; color: #1e293b; font-size: 0.95rem; }
-.mode-desc { font-size: 0.8rem; color: #64748b; margin-top: 0.25rem; }
-
-.duration-pill {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.65rem 1.5rem;
-    border-radius: 999px;
-    font-weight: 600;
-    font-size: 0.9rem;
-    border: 2px solid #e2e8f0;
-    background: #f8fafc;
-    color: #475569;
-    margin: 0.25rem;
-}
-
-.duration-pill-active {
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
-    color: white;
-    border-color: transparent;
-    box-shadow: 0 4px 14px rgba(99,102,241,0.35);
-}
-
-.interview-header {
-    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%) !important;
-    border-radius: 16px;
-    padding: 1.35rem 1.75rem;
-    color: white !important;
-    margin-bottom: 1.5rem;
-    width: 100%;
-    box-sizing: border-box;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    min-height: 5.5rem;
-}
-
-.interview-header-left { flex: 1; min-width: 0; }
-.interview-header-right {
-    text-align: right;
-    flex-shrink: 0;
-    color: white;
-}
-
-/* Painted by JS onto the title/timer/End Interview row */
-div[data-testid="stHorizontalBlock"].interview-header-row {
+/* Interview header: style the column row that contains the title */
+div[data-testid="stHorizontalBlock"]:has(.interview-header-title) {
     background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%) !important;
     border-radius: 16px !important;
     padding: 1.15rem 1.35rem !important;
@@ -245,14 +152,14 @@ div[data-testid="stHorizontalBlock"].interview-header-row {
     box-sizing: border-box !important;
 }
 
-div[data-testid="stHorizontalBlock"].interview-header-row .interview-header-title,
-div[data-testid="stHorizontalBlock"].interview-header-row .status-badge,
-div[data-testid="stHorizontalBlock"].interview-header-row .interview-timer,
-div[data-testid="stHorizontalBlock"].interview-header-row .interview-header-right {
+div[data-testid="stHorizontalBlock"]:has(.interview-header-title) .interview-header-title,
+div[data-testid="stHorizontalBlock"]:has(.interview-header-title) .status-badge,
+div[data-testid="stHorizontalBlock"]:has(.interview-header-title) .interview-timer,
+div[data-testid="stHorizontalBlock"]:has(.interview-header-title) .interview-header-right {
     color: white !important;
 }
 
-div[data-testid="stHorizontalBlock"].interview-header-row div[data-testid="stButton"] > button {
+div[data-testid="stHorizontalBlock"]:has(.interview-header-title) div[data-testid="stButton"] > button {
     background: rgba(255, 255, 255, 0.96) !important;
     color: #312e81 !important;
     border: none !important;
@@ -262,19 +169,6 @@ div[data-testid="stHorizontalBlock"].interview-header-row div[data-testid="stBut
 
 .interview-header-title { font-size: 1.1rem; font-weight: 600; opacity: 0.9; color: white; }
 
-/* Hidden bridge button clicked by TTS audio.ended to open the mic */
-div[data-testid="stElementContainer"]:has(.tts-done-marker) {
-    display: none !important;
-}
-div[data-testid="stElementContainer"]:has(.tts-done-marker) + div[data-testid="stElementContainer"] {
-    position: absolute !important;
-    left: -10000px !important;
-    width: 1px !important;
-    height: 1px !important;
-    overflow: hidden !important;
-    opacity: 0 !important;
-    pointer-events: none !important;
-}
 .interview-timer {
     font-size: 2rem;
     font-weight: 800;
@@ -282,8 +176,8 @@ div[data-testid="stElementContainer"]:has(.tts-done-marker) + div[data-testid="s
     letter-spacing: 0.02em;
 }
 
-.interview-timer-warning { color: #fbbf24; }
-.interview-timer-critical { color: #f87171; animation: pulse 1s infinite; }
+.interview-timer-warning { color: #fbbf24 !important; }
+.interview-timer-critical { color: #f87171 !important; animation: pulse 1s infinite; }
 
 @keyframes pulse {
     0%, 100% { opacity: 1; }
@@ -312,17 +206,6 @@ div[data-testid="stElementContainer"]:has(.tts-done-marker) + div[data-testid="s
 @keyframes blink {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
-}
-
-.chat-container {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 16px;
-    padding: 1rem;
-    min-height: 320px;
-    max-height: 480px;
-    overflow-y: auto;
-    margin-bottom: 1rem;
 }
 
 /* Zoom-like meeting room */
@@ -425,20 +308,6 @@ div[data-testid="stElementContainer"]:has(.tts-done-marker) + div[data-testid="s
     to { opacity: 1; transform: translateY(0); }
 }
 
-.meeting-controls {
-    display: flex;
-    gap: 0.75rem;
-    justify-content: center;
-    margin-top: 0.5rem;
-}
-
-.meeting-idle-hint {
-    color: #64748b;
-    font-size: 0.85rem;
-    text-align: center;
-    padding: 2rem 1rem;
-}
-
 .mic-active-hint {
     color: #4338ca;
     font-size: 0.95rem;
@@ -449,22 +318,6 @@ div[data-testid="stElementContainer"]:has(.tts-done-marker) + div[data-testid="s
     background: #eef2ff;
     border-radius: 12px;
     border: 1px solid #c7d2fe;
-}
-
-.cooldown-banner {
-    text-align: center;
-    padding: 1.25rem 1rem;
-    margin: 1rem 0;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    color: #475569;
-    font-size: 0.95rem;
-}
-
-.cooldown-banner strong {
-    color: #4338ca;
-    font-size: 1.25rem;
 }
 
 .eval-hero {
@@ -548,89 +401,10 @@ section[data-testid="stSidebar"] { display: none; }
 
 .feature-icon { font-size: 1.5rem; margin-bottom: 0.35rem; }
 .feature-text { font-size: 0.8rem; color: #64748b; font-weight: 500; }
-
-.generating-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 9999;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 2rem;
-    margin: 0;
-    max-width: none;
-    text-align: center;
-    background: rgba(250, 251, 252, 0.94);
-    backdrop-filter: blur(6px);
-}
-
-.generating-overlay-card {
-    max-width: 420px;
-    width: 100%;
-}
-
-.generating-spinner {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 1.5rem;
-}
-
-.generating-square {
-    width: 14px;
-    height: 14px;
-    border-radius: 4px;
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
-    animation: generating-bounce 1.2s ease-in-out infinite;
-}
-
-.generating-square:nth-child(2) { animation-delay: 0.15s; }
-.generating-square:nth-child(3) { animation-delay: 0.3s; }
-.generating-square:nth-child(4) { animation-delay: 0.45s; }
-
-@keyframes generating-bounce {
-    0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
-    40% { transform: scale(1); opacity: 1; }
-}
-
-.generating-title {
-    font-size: 1.15rem;
-    font-weight: 700;
-    color: #1e293b;
-    margin-bottom: 0.5rem;
-}
-
-.generating-subtitle {
-    font-size: 0.9rem;
-    color: #64748b;
-    line-height: 1.5;
-}
 </style>
 """
 
 
-def render_generating_overlay() -> None:
-    st.markdown(
-        """
-        <div class="generating-overlay">
-            <div class="generating-overlay-card">
-                <div class="generating-spinner">
-                    <div class="generating-square"></div>
-                    <div class="generating-square"></div>
-                    <div class="generating-square"></div>
-                    <div class="generating-square"></div>
-                </div>
-                <div class="generating-title">Preparing your mock interview</div>
-                <div class="generating-subtitle">
-                    Tailoring questions to your role and generating the first question…
-                </div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
 def inject_styles() -> None:
-    """Inject layout/CSS every run — Streamlit rebuilds the page on each rerun."""
+    """Inject layout/CSS. Kept lean so full reruns stay cheap."""
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)

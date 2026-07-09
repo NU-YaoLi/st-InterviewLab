@@ -37,7 +37,7 @@ def get_job_display_label(session: dict | Any = None) -> str:
 
 
 def get_api_key_from_session() -> str:
-    """Return the OpenAI API key from Streamlit secrets or session fallback."""
+    """Return the OpenAI API key from Streamlit secrets only."""
     try:
         key = st.secrets.get("OPENAI_API_KEY", "")
         if key:
@@ -54,7 +54,7 @@ def get_api_key_from_session() -> str:
     except (AttributeError, FileNotFoundError, KeyError):
         pass
 
-    return (st.session_state.get("openai_api_key") or "").strip()
+    return ""
 
 
 def state_from_session(session: dict[str, Any] | Any) -> InterviewState:
@@ -67,7 +67,6 @@ def state_from_session(session: dict[str, Any] | Any) -> InterviewState:
         target_level=session.get("target_level", ""),
         job_description=session.get("job_description", ""),
         resume=session.get("resume", ""),
-        ai_voice_enabled=session.get("ai_voice_enabled", True),
         chat_history=list(session.get("chat_history", [])),
         current_question_index=session.get("current_question_index", 0),
         total_questions=session.get("total_questions", TOTAL_QUESTIONS),
@@ -78,7 +77,6 @@ def state_from_session(session: dict[str, Any] | Any) -> InterviewState:
         scores=session.get("scores"),
         evaluation_results=session.get("evaluation_results"),
         turn_evaluations=list(session.get("turn_evaluations", [])),
-        last_tts_audio=session.get("last_tts_audio"),
         error_message=session.get("error_message"),
         interview_duration_minutes=session.get(
             "interview_duration_minutes", DEFAULT_DURATION_MINUTES
@@ -97,7 +95,6 @@ def apply_state_to_session(state: InterviewState, session: dict[str, Any] | Any)
     session["target_level"] = state.target_level
     session["job_description"] = state.job_description
     session["resume"] = state.resume
-    session["ai_voice_enabled"] = state.ai_voice_enabled
     session["chat_history"] = state.chat_history
     session["current_question_index"] = state.current_question_index
     session["total_questions"] = state.total_questions
@@ -108,7 +105,6 @@ def apply_state_to_session(state: InterviewState, session: dict[str, Any] | Any)
     session["scores"] = state.scores
     session["evaluation_results"] = state.evaluation_results
     session["turn_evaluations"] = state.turn_evaluations
-    session["last_tts_audio"] = state.last_tts_audio
     session["error_message"] = state.error_message
     session["interview_duration_minutes"] = state.interview_duration_minutes
     session["interview_started_at"] = state.interview_started_at
@@ -116,7 +112,7 @@ def apply_state_to_session(state: InterviewState, session: dict[str, Any] | Any)
 
 
 def reset_runtime_session() -> None:
-    """Reset interview runtime while preserving setup + API key."""
+    """Reset interview runtime while preserving setup fields."""
     preserved = {
         "interview_mode": st.session_state.get("interview_mode"),
         "target_role": st.session_state.get("target_role"),

@@ -1,6 +1,6 @@
 # InterviewLab (Streamlit) — AI Mock Interviewer
 
-InterviewLab is a Streamlit web app for **behavioral** and **technical** mock interviews. Live interviews use OpenAI’s **Realtime API** (WebRTC speech-to-speech). Post-interview scoring uses a chat model. The app owner configures the AI service via Streamlit secrets — interviewees do not enter credentials in the UI.
+InterviewLab is a Streamlit web app for **behavioral** and **technical** mock interviews. Live interviews use OpenAI’s **Realtime API** (WebRTC speech-to-speech). Post-interview scoring uses a chat model and is based on **spoken answers only**. The app owner configures the AI service via Streamlit secrets — interviewees do not enter credentials in the UI.
 
 ## What it does
 
@@ -8,8 +8,8 @@ InterviewLab is a Streamlit web app for **behavioral** and **technical** mock in
   - **Behavioral** — natural follow-ups from an HR-style interviewer
   - **Technical** — role-specific questions with depth/accuracy follow-ups
 - **Personalization** — job details and resume/background drive the live interviewer
-- **Live Realtime voice** — browser WebRTC session (`gpt-realtime-2.1`); speak naturally, no Whisper/TTS turn loop
-- **Timed sessions** — 15 / 20 / 30 / 45 minute interviews with End Interview confirmation
+- **Live Realtime voice** — browser WebRTC session (`gpt-realtime-2.1`); speak naturally
+- **Timed sessions** — 15 / 20 / 30 / 45 minute interviews; countdown starts when audio connects
 - **Evaluation dashboard** — overall score, dimension breakdown, strengths, improvements, sample answer
 
 ## Quick start (local)
@@ -77,29 +77,30 @@ Edit `interviewlab_config.py`:
 
 | Setting | Default | Purpose |
 |---------|---------|---------|
-| `INTERVIEWLAB_MODEL` | `gpt-5-mini` | Chat + evaluation |
-| `WHISPER_MODEL` | `gpt-4o-transcribe` | Speech-to-text |
-| `WHISPER_FALLBACK_MODEL` | `whisper-1` | Transcription fallback |
-| `TTS_MODEL` | `gpt-4o-mini-tts` | Interviewer voice |
-| `TTS_FALLBACK_MODEL` | `tts-1` | TTS fallback |
-| `TOTAL_QUESTIONS` | `5` | Interview length |
-| `PER_TURN_EVALUATION` | `False` | Score after each answer |
+| `INTERVIEWLAB_MODEL` | `gpt-5-mini` | Post-interview evaluation |
+| `REALTIME_MODEL` | `gpt-realtime-2.1` | Live WebRTC interviewer |
+| `REALTIME_VOICE` | `alloy` | Interviewer voice |
+| `REALTIME_SILENCE_DURATION_MS` | `5000` | Silence before next question |
+| `DURATION_OPTIONS` | `15, 20, 30, 45` | Session length choices |
+| `MINUTES_PER_QUESTION` | `4` | Derives question count from duration |
 
 ## Project layout
 
 ```
 interviewlab_main.py       # Streamlit entrypoint (Cloud main file)
 interviewlab_config.py     # Models, prompts, rubrics, constants
-bknd/                      # Backend (OpenAI, engine, audio, evaluator)
+bknd/                      # Backend (Realtime, engine state, evaluator)
 fntnd/                     # Frontend (UI, session state, views)
   interviewlab_ftnd.py     # main() router
   interviewlab_state.py    # Session defaults + state mapping
   interviewlab_errors.py   # Cloud-friendly OpenAI error messages
-  views/                   # Landing, interview chat, evaluation dashboard
+  components/realtime_interview/  # WebRTC audio bridge
+  views/                   # Setup, live interview, evaluation dashboard
 .streamlit/config.toml     # Theme + headless server settings for Cloud
 ```
 
 ## Notes / caveats
 
 - **Session lifetime:** On Streamlit Cloud, session state resets when the app cold-starts or the user opens a new session.
-- **Audio:** Requires Streamlit ≥ 1.33 and browser microphone permission.
+- **Audio:** Requires browser microphone permission over HTTPS.
+- **Scoring:** Empty sessions (no spoken answers) score 0; resume text alone does not inflate scores.
