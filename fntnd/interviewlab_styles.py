@@ -18,10 +18,10 @@ section.main > div.block-container {
     max-width: 68rem !important;
     margin-left: auto !important;
     margin-right: auto !important;
-    padding-top: 1.5rem;
+    padding-top: 1rem;
     padding-bottom: 2rem;
-    padding-left: max(1.5rem, 5vw);
-    padding-right: max(1.5rem, 5vw);
+    padding-left: max(2rem, 5vw);
+    padding-right: max(2rem, 5vw);
 }
 
 .setup-section {
@@ -541,7 +541,7 @@ def render_generating_overlay() -> None:
 
 
 def inject_styles() -> None:
-    if st.session_state.get("_styles_injected"):
+    if st.session_state.get("_styles_version") == 2:
         return
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
-    st.session_state["_styles_injected"] = True
+    st.session_state["_styles_version"] = 2
