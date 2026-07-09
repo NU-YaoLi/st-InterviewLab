@@ -427,9 +427,7 @@ def _render_voice_input(api_key: str) -> None:
     if _handle_mic_payload(api_key, mic_payload):
         return
 
-    if phase == "listening" and st.button(
-        "Finish Answering →", type="primary", use_container_width=True
-    ):
+    if st.button("Finish Answering →", type="primary", use_container_width=True):
         st.session_state["_stop_mic_now"] = True
         st.rerun(scope="app")
 
