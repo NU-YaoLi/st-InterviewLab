@@ -261,6 +261,20 @@ div[data-testid="stHorizontalBlock"].interview-header-row div[data-testid="stBut
 }
 
 .interview-header-title { font-size: 1.1rem; font-weight: 600; opacity: 0.9; color: white; }
+
+/* Hidden bridge button clicked by TTS audio.ended to open the mic */
+div[data-testid="stElementContainer"]:has(.tts-done-marker) {
+    display: none !important;
+}
+div[data-testid="stElementContainer"]:has(.tts-done-marker) + div[data-testid="stElementContainer"] {
+    position: absolute !important;
+    left: -10000px !important;
+    width: 1px !important;
+    height: 1px !important;
+    overflow: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
 .interview-timer {
     font-size: 2rem;
     font-weight: 800;

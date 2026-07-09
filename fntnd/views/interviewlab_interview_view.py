@@ -37,24 +37,17 @@ def render_chat_history() -> None:
 
 
 def _estimate_speech_seconds(text: str) -> float:
+    """Fallback only when browser cannot report real TTS duration."""
     words = len(text.split())
-    return max(3.0, min(45.0, words * 0.42))
+    return max(5.0, min(90.0, words * 0.55 + 1.5))
 
 
 def _set_question_caption(text: str) -> None:
-    """Keep the current interviewer question visible until the answer is submitted."""
     st.session_state["live_caption_speaker"] = "interviewer"
     st.session_state["live_caption_text"] = text
     st.session_state["active_speaker"] = "interviewer"
     st.session_state["live_caption_expires_at"] = None
     st.session_state["current_question_text"] = text
-
-
-def _set_you_caption(text: str, *, duration: float = 4.0) -> None:
-    st.session_state["live_caption_speaker"] = "you"
-    st.session_state["live_caption_text"] = text
-    st.session_state["active_speaker"] = "you"
-    st.session_state["live_caption_expires_at"] = time.time() + duration
 
 
 def _clear_live_caption() -> None:
@@ -65,26 +58,26 @@ def _clear_live_caption() -> None:
 
 
 def _open_mic_turn() -> None:
-    """Switch from interviewer speaking to candidate listening and show the mic."""
+    """Switch from interviewer speaking to candidate listening."""
     st.session_state["interview_phase"] = "listening"
     st.session_state["mic_auto_start"] = True
     st.session_state["active_speaker"] = "you"
     st.session_state.pop("_mic_open_after", None)
-    # Keep the interviewer question caption visible while the candidate answers.
     if st.session_state.get("current_question_text"):
         st.session_state["live_caption_speaker"] = "interviewer"
         st.session_state["live_caption_text"] = st.session_state["current_question_text"]
         st.session_state["live_caption_expires_at"] = None
 
 
-def _sync_interview_phase_timers() -> bool:
-    """Open the mic when TTS finishes. Returns True if an app-level rerun is needed."""
+def _sync_mic_open_timer() -> bool:
+    """Open mic from Python fallback timer. Returns True if phase changed."""
     open_after = st.session_state.get("_mic_open_after")
-    if open_after and time.time() >= open_after:
-        if st.session_state.get("interview_phase") == "interviewer_speaking":
-            _open_mic_turn()
-            return True
-        st.session_state.pop("_mic_open_after", None)
+    if not open_after or time.time() < open_after:
+        return False
+    st.session_state.pop("_mic_open_after", None)
+    if st.session_state.get("interview_phase") == "interviewer_speaking":
+        _open_mic_turn()
+        return True
     return False
 
 
@@ -97,7 +90,6 @@ def _timer_class(remaining_seconds: float) -> str:
 
 
 def _paint_header_card() -> None:
-    """Apply the solid purple background to the header row that contains End Interview."""
     components.html(
         """
         <script>
@@ -129,7 +121,6 @@ def _paint_header_card() -> None:
 
 
 def _render_interview_header(state: object) -> None:
-    """Full-width purple title card with End Interview on the right."""
     timer_cls = _timer_class(get_remaining_seconds(state))
     mode = st.session_state.get("interview_mode", "Behavioral")
     role = get_job_display_label(st.session_state)
@@ -162,12 +153,11 @@ def _render_interview_header(state: object) -> None:
     with end_col:
         if st.button("End Interview", type="secondary", key="end_interview_btn", use_container_width=True):
             st.session_state["_show_end_interview_confirm"] = True
-            st.rerun(scope="app")
+            st.rerun()
     _paint_header_card()
 
 
 def _inject_mic_control_script(*, action: str) -> None:
-    """Auto-start or stop Streamlit's native audio recorder."""
     components.html(
         f"""
         <script>
@@ -197,7 +187,7 @@ def _inject_mic_control_script(*, action: str) -> None:
           let tries = 0;
           const timer = setInterval(function() {{
             tries += 1;
-            if (run() || tries > 40) clearInterval(timer);
+            if (run() || tries > 25) clearInterval(timer);
           }}, 200);
         }})();
         </script>
@@ -207,18 +197,52 @@ def _inject_mic_control_script(*, action: str) -> None:
 
 
 def _play_tts_autoplay(audio_bytes: bytes | None, caption_text: str = "") -> None:
-    """Play interviewer audio and schedule the candidate mic to open when speech ends."""
+    """Play interviewer audio; open mic when audio ends (with duration fallback)."""
     if not audio_bytes:
         return
     b64 = base64.b64encode(audio_bytes).decode()
-    speech_seconds = _estimate_speech_seconds(caption_text) if caption_text else 8.0
+    fallback_seconds = _estimate_speech_seconds(caption_text) if caption_text else 12.0
     components.html(
         f"""
         <script>
         (function() {{
+            function clickTtsDone() {{
+              const doc = window.parent.document;
+              const buttons = doc.querySelectorAll("button");
+              for (let i = 0; i < buttons.length; i += 1) {{
+                const label = (buttons[i].innerText || buttons[i].textContent || "").trim();
+                if (label === "interviewlab_tts_done") {{
+                  buttons[i].click();
+                  return true;
+                }}
+              }}
+              return false;
+            }}
+            function signalTtsDone() {{
+              if (clickTtsDone()) return;
+              let tries = 0;
+              const timer = setInterval(function() {{
+                tries += 1;
+                if (clickTtsDone() || tries > 30) clearInterval(timer);
+              }}, 150);
+            }}
             const audio = new Audio("data:audio/mpeg;base64,{b64}");
             audio.playsInline = true;
-            audio.play().catch(function() {{}});
+            let signaled = false;
+            function done() {{
+              if (signaled) return;
+              signaled = true;
+              signalTtsDone();
+            }}
+            audio.addEventListener("ended", done);
+            audio.addEventListener("error", done);
+            audio.addEventListener("loadedmetadata", function() {{
+              if (audio.duration && isFinite(audio.duration) && audio.duration > 0) {{
+                setTimeout(done, (audio.duration + 0.6) * 1000);
+              }}
+            }});
+            setTimeout(done, {int(fallback_seconds * 1000)});
+            audio.play().catch(function() {{ done(); }});
         }})();
         </script>
         """,
@@ -228,14 +252,13 @@ def _play_tts_autoplay(audio_bytes: bytes | None, caption_text: str = "") -> Non
         _set_question_caption(caption_text)
     st.session_state["interview_phase"] = "interviewer_speaking"
     st.session_state["active_speaker"] = "interviewer"
-    st.session_state["_mic_open_after"] = time.time() + speech_seconds
+    st.session_state["_mic_open_after"] = time.time() + fallback_seconds + 2.0
 
 
 def _render_meeting_room() -> None:
     active = st.session_state.get("active_speaker")
     interviewer_cls = "participant-tile speaking" if active == "interviewer" else "participant-tile"
     you_cls = "participant-tile speaking" if active == "you" else "participant-tile"
-
     interviewer_status = "Speaking…" if active == "interviewer" else "Interviewer"
     you_status = "Speaking…" if active == "you" else "You"
 
@@ -265,7 +288,6 @@ def _render_live_caption() -> None:
     speaker = st.session_state.get("live_caption_speaker") or "interviewer"
     if not text:
         return
-
     label = "Interviewer" if speaker == "interviewer" else "You"
     safe_text = html.escape(text)
     st.markdown(
@@ -279,26 +301,27 @@ def _render_live_caption() -> None:
     )
 
 
-@st.fragment(run_every=1)
-def _timer_fragment(api_key: str) -> None:
-    """Auto-refresh timer; trigger full rerun when mic should open."""
-    if _sync_interview_phase_timers():
-        st.rerun(scope="app")
+@st.fragment(run_every=2)
+def _timer_fragment() -> None:
+    """Lightweight timer refresh only — never runs heavy API work."""
+    if st.session_state.get("interview_phase") == "processing":
         return
-
     if not st.session_state.get("interview_session_started"):
         return
-
-    state = state_from_session(st.session_state)
     if not st.session_state.get("interview_active"):
         return
 
-    _render_interview_header(state)
-
-    if is_time_expired(state):
-        _handle_time_expiry(api_key, state)
+    # Mic-open fallback: request a full app rerun once, outside heavy work.
+    if _sync_mic_open_timer():
+        st.rerun()
         return
 
+    state = state_from_session(st.session_state)
+    _render_interview_header(state)
+    if is_time_expired(state):
+        st.session_state["_time_expired"] = True
+        st.rerun()
+        return
     _render_meeting_room()
     _render_live_caption()
 
@@ -307,7 +330,6 @@ def _render_live_header() -> None:
     mode = st.session_state.get("interview_mode", "Behavioral")
     role = get_job_display_label(st.session_state)
     duration = st.session_state.get("interview_duration_minutes", 20)
-
     st.markdown(
         f"""
         <div class="interview-header">
@@ -329,10 +351,10 @@ def _render_live_header() -> None:
     )
 
 
-def _handle_time_expiry(api_key: str, state) -> None:
+def _handle_time_expiry(api_key: str) -> None:
+    state = state_from_session(st.session_state)
     if not is_time_expired(state):
         return
-
     try:
         client = get_openai_client(api_key)
         force_close_interview(state, client)
@@ -340,8 +362,9 @@ def _handle_time_expiry(api_key: str, state) -> None:
             run_evaluation(client, state)
         _clear_live_caption()
         st.session_state.pop("current_question_text", None)
+        st.session_state.pop("_time_expired", None)
         apply_state_to_session(state, st.session_state)
-        st.rerun(scope="app")
+        st.rerun()
     except Exception as exc:
         display_openai_error(exc)
 
@@ -356,31 +379,40 @@ def end_interview_and_show_results(api_key: str) -> None:
         _clear_live_caption()
         st.session_state.pop("current_question_text", None)
         apply_state_to_session(state, st.session_state)
-        st.rerun(scope="app")
+        st.rerun()
     except Exception as exc:
         display_openai_error(exc)
+
+
+def _queue_answer_processing(audio_bytes: bytes | None, *, suffix: str = ".wav") -> None:
+    """Leave listening UI immediately; process on the next clean run."""
+    st.session_state["interview_phase"] = "processing"
+    st.session_state["_pending_audio_bytes"] = audio_bytes or b""
+    st.session_state["_pending_audio_suffix"] = suffix
+    st.session_state.pop("mic_auto_start", None)
+    st.session_state.pop("_stop_mic_now", None)
+    st.session_state.pop("_finish_after_stop", None)
+    st.session_state.pop("_mic_open_after", None)
+    st.rerun()
 
 
 def _process_answer(api_key: str, user_answer: str) -> None:
     state = state_from_session(st.session_state)
     try:
         client = get_openai_client(api_key)
-        # Clear previous question only once the answer is being processed.
         _clear_live_caption()
         st.session_state.pop("current_question_text", None)
 
-        with st.spinner("Interviewer is thinking…"):
-            result = process_user_response(state, client, user_answer)
+        result = process_user_response(state, client, user_answer)
 
         if PER_TURN_EVALUATION and result.get("user_answer") and state.responses:
-            with st.spinner("Evaluating your response…"):
-                run_evaluation(
-                    client,
-                    state,
-                    per_turn=True,
-                    latest_question=state.responses[-1]["question"],
-                    latest_answer=result["user_answer"],
-                )
+            run_evaluation(
+                client,
+                state,
+                per_turn=True,
+                latest_question=state.responses[-1]["question"],
+                latest_answer=result["user_answer"],
+            )
 
         message = result.get("message", "")
         if message:
@@ -391,19 +423,65 @@ def _process_answer(api_key: str, user_answer: str) -> None:
                 st.session_state["_autoplay_tts"] = True
                 st.session_state["_autoplay_caption"] = message
                 st.session_state["interview_phase"] = "interviewer_speaking"
+            else:
+                _set_question_caption(message)
+                _open_mic_turn()
+        else:
+            st.session_state["interview_phase"] = "listening"
 
         if result.get("action") == "complete":
-            with st.spinner("Generating your evaluation…"):
-                run_evaluation(client, state)
+            run_evaluation(client, state)
+            st.session_state["interview_phase"] = "complete"
 
         apply_state_to_session(state, st.session_state)
         if result.get("action") != "complete":
             st.session_state["mic_turn_id"] = st.session_state.get("mic_turn_id", 0) + 1
         st.session_state.pop("last_audio_payload_id", None)
-        st.rerun(scope="app")
-
+        st.session_state.pop("_pending_audio_bytes", None)
+        st.session_state.pop("_pending_audio_suffix", None)
+        st.rerun()
     except Exception as exc:
+        st.session_state["interview_phase"] = "listening"
+        st.session_state.pop("_pending_audio_bytes", None)
         _clear_live_caption()
+        display_openai_error(exc)
+
+
+def _run_pending_answer_processing(api_key: str) -> None:
+    """Transcribe + advance interview on a clean processing screen (no fragment churn)."""
+    state = state_from_session(st.session_state)
+    _render_interview_header(state)
+    _render_meeting_room()
+    st.markdown(
+        '<p class="mic-active-hint">⏳ Processing your answer… preparing the next question.</p>',
+        unsafe_allow_html=True,
+    )
+
+    audio_bytes = st.session_state.pop("_pending_audio_bytes", b"")
+    suffix = st.session_state.pop("_pending_audio_suffix", ".wav")
+
+    try:
+        if not audio_bytes:
+            with st.spinner("Moving to the next question…"):
+                _process_answer(api_key, "I did not provide a verbal answer to this question.")
+            return
+
+        client = get_openai_client(api_key)
+        with st.spinner("Transcribing your response…"):
+            transcribed = transcribe_audio_bytes(client, audio_bytes, suffix=suffix)
+
+        if not transcribed.strip():
+            with st.spinner("Moving to the next question…"):
+                _process_answer(api_key, "I did not provide a verbal answer to this question.")
+            return
+
+        if not is_english_text(transcribed):
+            st.warning(NON_ENGLISH_UI_MESSAGE)
+
+        with st.spinner("Interviewer is thinking…"):
+            _process_answer(api_key, transcribed)
+    except Exception as exc:
+        st.session_state["interview_phase"] = "listening"
         display_openai_error(exc)
 
 
@@ -422,14 +500,14 @@ def _handle_begin_session(api_key: str) -> None:
 
         apply_state_to_session(state, st.session_state)
         st.session_state["_autoplay_tts"] = True
-        st.rerun(scope="app")
+        st.rerun()
     except Exception as exc:
         display_openai_error(exc)
 
 
 def _render_voice_input(api_key: str) -> None:
-    if _sync_interview_phase_timers():
-        st.rerun(scope="app")
+    if _sync_mic_open_timer():
+        st.rerun()
         return
 
     phase = st.session_state.get("interview_phase")
@@ -441,6 +519,10 @@ def _render_voice_input(api_key: str) -> None:
             '<p class="mic-active-hint">🎤 Interviewer speaking… your microphone opens automatically when they finish.</p>',
             unsafe_allow_html=True,
         )
+        st.markdown('<div class="tts-done-marker"></div>', unsafe_allow_html=True)
+        if st.button("interviewlab_tts_done", key="_tts_done_btn"):
+            _open_mic_turn()
+            st.rerun()
         return
 
     st.markdown(
@@ -451,7 +533,6 @@ def _render_voice_input(api_key: str) -> None:
 
     turn_id = st.session_state.get("mic_turn_id", 0)
     auto_start = st.session_state.pop("mic_auto_start", False)
-    stop_now = st.session_state.pop("_stop_mic_now", False)
 
     if auto_start:
         st.session_state.pop("last_audio_payload_id", None)
@@ -464,53 +545,51 @@ def _render_voice_input(api_key: str) -> None:
 
     if auto_start:
         _inject_mic_control_script(action="start")
-    if stop_now:
-        _inject_mic_control_script(action="stop")
-
-    if st.session_state.pop("_finish_after_stop", False):
-        if audio_value is not None:
-            payload_id = f"{turn_id}:{getattr(audio_value, 'size', len(audio_value.getvalue()))}"
-            if payload_id != st.session_state.get("last_audio_payload_id"):
-                st.session_state["last_audio_payload_id"] = payload_id
-                _transcribe_and_submit(api_key, audio_value.getvalue(), suffix=".wav")
-                return
-        _process_answer(api_key, "I did not provide a verbal answer to this question.")
-        return
 
     if st.button("Finish Answering →", type="primary", use_container_width=True):
         if audio_value is not None:
-            payload_id = f"{turn_id}:{getattr(audio_value, 'size', len(audio_value.getvalue()))}"
-            st.session_state["last_audio_payload_id"] = payload_id
-            _transcribe_and_submit(api_key, audio_value.getvalue(), suffix=".wav")
+            _queue_answer_processing(audio_value.getvalue(), suffix=".wav")
             return
-        # Stop an in-progress recording, then submit on the next rerun.
-        st.session_state["_stop_mic_now"] = True
-        st.session_state["_finish_after_stop"] = True
-        st.rerun(scope="app")
+        # Still recording / no clip yet — stop mic once, then process whatever we get.
+        _inject_mic_control_script(action="stop")
+        st.session_state["_finish_wait_ticks"] = 0
+        st.session_state["interview_phase"] = "finishing"
+        st.rerun()
 
 
-def _transcribe_and_submit(api_key: str, audio_bytes: bytes, *, suffix: str) -> None:
-    if not audio_bytes:
-        _process_answer(api_key, "I did not provide a verbal answer to this question.")
+def _render_finishing_capture(api_key: str) -> None:
+    """Brief wait for Streamlit audio_input to flush after stop, then process."""
+    state = state_from_session(st.session_state)
+    _render_interview_header(state)
+    _render_meeting_room()
+    _render_live_caption()
+    st.markdown(
+        '<p class="mic-active-hint">⏳ Finishing your recording…</p>',
+        unsafe_allow_html=True,
+    )
+
+    turn_id = st.session_state.get("mic_turn_id", 0)
+    audio_value = st.audio_input(
+        "Record your answer",
+        key=f"interview_mic_{turn_id}",
+        label_visibility="collapsed",
+    )
+    _inject_mic_control_script(action="stop")
+
+    ticks = int(st.session_state.get("_finish_wait_ticks", 0))
+    if audio_value is not None:
+        st.session_state.pop("_finish_wait_ticks", None)
+        _queue_answer_processing(audio_value.getvalue(), suffix=".wav")
         return
 
-    try:
-        client = get_openai_client(api_key)
-        with st.spinner("Transcribing your response…"):
-            transcribed = transcribe_audio_bytes(client, audio_bytes, suffix=suffix)
+    if ticks >= 2:
+        st.session_state.pop("_finish_wait_ticks", None)
+        _queue_answer_processing(b"", suffix=".wav")
+        return
 
-        if not transcribed.strip():
-            _process_answer(api_key, "I did not provide a verbal answer to this question.")
-            return
-
-        if not is_english_text(transcribed):
-            st.warning(NON_ENGLISH_UI_MESSAGE)
-
-        _set_you_caption(transcribed, duration=4.0)
-        _process_answer(api_key, transcribed)
-    except Exception as exc:
-        _clear_live_caption()
-        display_openai_error(exc)
+    st.session_state["_finish_wait_ticks"] = ticks + 1
+    time.sleep(0.35)
+    st.rerun()
 
 
 def render_interview_view(api_key: str) -> None:
@@ -518,6 +597,19 @@ def render_interview_view(api_key: str) -> None:
 
     if st.session_state.pop("_auto_start_session", False) and not session_started:
         _handle_begin_session(api_key)
+        return
+
+    if st.session_state.pop("_time_expired", False):
+        _handle_time_expiry(api_key)
+        return
+
+    phase = st.session_state.get("interview_phase")
+    if phase == "processing":
+        _run_pending_answer_processing(api_key)
+        return
+
+    if phase == "finishing":
+        _render_finishing_capture(api_key)
         return
 
     if session_started and st.session_state.pop("_autoplay_tts", False):
@@ -531,7 +623,7 @@ def render_interview_view(api_key: str) -> None:
             _open_mic_turn()
 
     if session_started:
-        _timer_fragment(api_key)
+        _timer_fragment()
         _render_voice_input(api_key)
         return
 

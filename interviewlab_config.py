@@ -103,9 +103,12 @@ SESSION_DEFAULTS: dict[str, Any] = {
     "mic_turn_id": 0,
     "mic_auto_start": False,
     "_stop_mic_now": False,
-    "_finish_after_stop": False,
+    "_finish_wait_ticks": 0,
     "last_audio_payload_id": None,
     "_mic_open_after": None,
+    "_pending_audio_bytes": None,
+    "_pending_audio_suffix": ".wav",
+    "_time_expired": False,
 }
 
 # -------------------
