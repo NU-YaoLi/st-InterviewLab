@@ -40,7 +40,5 @@ def get_openai_client(api_key: str) -> OpenAI:
     """Create an OpenAI client from the configured API key."""
     key = (api_key or "").strip()
     if not key:
-        raise ValueError(
-            "OpenAI API key is required. Add OPENAI_API_KEY to Streamlit secrets."
-        )
+        raise ValueError("Interview service is not configured.")
     return OpenAI(api_key=key)

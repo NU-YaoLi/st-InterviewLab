@@ -84,6 +84,7 @@ def state_from_session(session: dict[str, Any] | Any) -> InterviewState:
             "interview_duration_minutes", DEFAULT_DURATION_MINUTES
         ),
         interview_started_at=session.get("interview_started_at"),
+        interview_session_started=session.get("interview_session_started", False),
     )
 
 
@@ -111,6 +112,7 @@ def apply_state_to_session(state: InterviewState, session: dict[str, Any] | Any)
     session["error_message"] = state.error_message
     session["interview_duration_minutes"] = state.interview_duration_minutes
     session["interview_started_at"] = state.interview_started_at
+    session["interview_session_started"] = state.interview_session_started
 
 
 def reset_runtime_session() -> None:
@@ -121,6 +123,10 @@ def reset_runtime_session() -> None:
         "target_level": st.session_state.get("target_level"),
         "job_description": st.session_state.get("job_description"),
         "resume": st.session_state.get("resume"),
+        "resume_typed": st.session_state.get("resume_typed"),
+        "resume_file_text": st.session_state.get("resume_file_text"),
+        "resume_file_name": st.session_state.get("resume_file_name"),
+        "resume_file_hash": st.session_state.get("resume_file_hash"),
         "interview_duration_minutes": st.session_state.get(
             "interview_duration_minutes", DEFAULT_DURATION_MINUTES
         ),

@@ -15,7 +15,7 @@ CONTENT_COLUMN_RATIO = [1, 4, 1]
 from bknd.interviewlab_audio import synthesize_if_enabled
 from bknd.interviewlab_engine import start_interview
 from bknd.interviewlab_openai import get_openai_client
-from fntnd.interviewlab_errors import display_openai_error
+from fntnd.interviewlab_errors import display_openai_error, queue_validation_error, show_queued_validation_error, SERVICE_UNAVAILABLE_MESSAGE
 from fntnd.interviewlab_state import (
     apply_state_to_session,
     get_api_key_from_session,
@@ -23,7 +23,7 @@ from fntnd.interviewlab_state import (
     reset_runtime_session,
     state_from_session,
 )
-from fntnd.interviewlab_styles import inject_styles
+from fntnd.interviewlab_styles import inject_styles, render_generating_overlay
 from fntnd.views.interviewlab_evaluation_view import render_evaluation_view
 from fntnd.views.interviewlab_interview_view import render_chat_history, render_interview_view
 from fntnd.views.interviewlab_landing_view import render_setup_view
@@ -37,12 +37,22 @@ def _page_content():
         yield
 
 
+def _abort_generating() -> None:
+    st.session_state.pop("_generating_interview", None)
+    st.session_state.pop("_generating_interview_ready", None)
+    st.session_state.pop("_start_requested", None)
+
+
 def _handle_start_interview(api_key: str) -> None:
     if not api_key:
-        st.error("OpenAI API key is not configured. Add OPENAI_API_KEY to Streamlit secrets.")
+        _abort_generating()
+        queue_validation_error(SERVICE_UNAVAILABLE_MESSAGE)
+        st.rerun()
         return
     if not st.session_state.get("job_description", "").strip():
-        st.error("Please enter job details before starting.")
+        _abort_generating()
+        queue_validation_error("Please enter **job details** before starting your mock interview.")
+        st.rerun()
         return
 
     try:
@@ -55,8 +65,12 @@ def _handle_start_interview(api_key: str) -> None:
         )
         apply_state_to_session(state, st.session_state)
         st.session_state.pop("_start_requested", None)
+        st.session_state.pop("_generating_interview", None)
+        st.session_state.pop("_generating_interview_ready", None)
         st.rerun()
     except Exception as exc:
+        st.session_state.pop("_generating_interview", None)
+        st.session_state.pop("_generating_interview_ready", None)
         display_openai_error(exc)
 
 
@@ -69,7 +83,16 @@ def main() -> None:
         interview_complete = st.session_state.get("interview_complete", False)
 
         if st.session_state.pop("_start_requested", False):
+            st.session_state["_generating_interview"] = True
+            st.rerun()
+
+        if st.session_state.get("_generating_interview"):
+            render_generating_overlay()
+            if not st.session_state.get("_generating_interview_ready"):
+                st.session_state["_generating_interview_ready"] = True
+                st.rerun()
             _handle_start_interview(get_api_key_from_session())
+            return
 
         if interview_complete:
             render_evaluation_view()
@@ -79,13 +102,13 @@ def main() -> None:
         elif interview_active:
             api_key = get_api_key_from_session()
             if not api_key:
-                st.error("OpenAI API key is not configured. Add OPENAI_API_KEY to Streamlit secrets.")
-                if st.button("Back to Setup"):
-                    reset_runtime_session()
-                    st.rerun()
+                queue_validation_error(SERVICE_UNAVAILABLE_MESSAGE)
+                reset_runtime_session()
+                st.rerun()
                 return
             render_interview_view(api_key)
         else:
+            show_queued_validation_error()
             render_setup_view()
 
             if not interview_active and not interview_complete:

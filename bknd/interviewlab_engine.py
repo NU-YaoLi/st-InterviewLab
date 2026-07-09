@@ -56,6 +56,7 @@ class InterviewState:
     total_questions: int = TOTAL_QUESTIONS
     interview_duration_minutes: int = DEFAULT_DURATION_MINUTES
     interview_started_at: float | None = None
+    interview_session_started: bool = False
     current_question_text: str = ""
     responses: list[dict[str, Any]] = field(default_factory=list)
     awaiting_follow_up: bool = False
@@ -98,15 +99,25 @@ def reset_interview_state(state: InterviewState) -> None:
     state.last_tts_audio = None
     state.error_message = None
     state.interview_started_at = None
+    state.interview_session_started = False
+
+
+def begin_live_session(state: InterviewState) -> None:
+    """Start the countdown timer when the candidate is ready."""
+    state.interview_session_started = True
+    state.interview_started_at = time.time()
 
 
 def _context_block(ctx: InterviewContext) -> str:
+    resume_text = ctx.resume or "(none provided)"
+    job_text = ctx.job_description or ctx.target_role or "(none provided)"
     return (
         f"Interview mode: {ctx.mode}\n"
         f"Total main questions: {ctx.total_questions}\n\n"
-        f"Job details (title, level, description):\n"
-        f"{ctx.job_description or ctx.target_role or '(none provided)'}\n\n"
-        f"Candidate resume/profile:\n{ctx.resume or '(none provided)'}"
+        f"Job details (title, level, description):\n{job_text}\n\n"
+        f"Candidate background (typed notes and/or uploaded resume):\n{resume_text}\n\n"
+        "Important: Ask questions that connect the role requirements with this candidate's "
+        "specific experience, skills, and projects whenever background information is available."
     )
 
 
@@ -120,6 +131,8 @@ def get_remaining_seconds(state: InterviewState) -> float:
 
 def is_time_expired(state: InterviewState) -> bool:
     """Return True when the interview timer has run out."""
+    if not state.interview_session_started:
+        return False
     return get_remaining_seconds(state) <= 0
 
 
@@ -175,17 +188,17 @@ def _parse_json_response(raw: str) -> dict[str, Any]:
 
 
 def start_interview(state: InterviewState, client: OpenAI) -> str:
-    """Begin the interview and return the first interviewer message."""
+    """Prepare the interview room and return the first interviewer message."""
     reset_interview_state(state)
     state.interview_active = True
-    state.interview_started_at = time.time()
     state.total_questions = questions_for_duration(state.interview_duration_minutes)
 
     instruction = (
         f"This is question 1 of approximately {state.total_questions}. "
-        f"The interview is {state.interview_duration_minutes} minutes long. "
-        "Welcome the candidate warmly, note this is an English voice mock interview, "
-        "and ask the first interview question."
+        "Give ONE brief welcome sentence, then ask ONE short question "
+        "(1–2 sentences total for the question). "
+        "Base the question on the job details AND the candidate's background when available. "
+        "Do NOT mention STAR, answer format, or what to include in the answer."
     )
     question = _call_llm(client, _build_messages(state, instruction=instruction), temperature=0.8)
 
@@ -225,12 +238,13 @@ def _generate_next_main_question(state: InterviewState, client: OpenAI) -> str:
     if is_final:
         instruction = (
             f"This is the final main question ({state.total_questions} of "
-            f"{state.total_questions}). Explicitly state it is the last question."
+            f"{state.total_questions}). Ask ONE short question in 1–2 sentences. "
+            "You may briefly note it is the last question. No coaching or format tips."
         )
     else:
         instruction = (
             f"This is question {next_index} of {state.total_questions}. "
-            "Ask the next distinct interview question."
+            "Ask the next distinct question in 1–2 sentences only. No coaching or format tips."
         )
 
     question = _call_llm(client, _build_messages(state, instruction=instruction), temperature=0.8)
@@ -270,6 +284,20 @@ def _close_interview(
 def force_close_interview(state: InterviewState, client: OpenAI) -> str:
     """Close the interview immediately when the timer expires with no pending answer."""
     return _close_interview(state, client, time_expired=True)
+
+
+def end_interview_manually(state: InterviewState, client: OpenAI) -> str:
+    """Close the interview when the candidate clicks End Interview."""
+    instruction = (
+        "The candidate has chosen to end the interview early. "
+        "Thank them professionally and clearly state that the interview has concluded."
+    )
+    closing = _call_llm(client, _build_messages(state, instruction=instruction), temperature=0.6)
+
+    state.interview_active = False
+    state.interview_complete = True
+    add_message(state, "assistant", closing)
+    return closing
 
 
 def process_user_response(

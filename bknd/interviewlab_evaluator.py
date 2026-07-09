@@ -126,7 +126,8 @@ def evaluate_full_interview(
     user_content = (
         f"Mode: {ctx.mode}\n"
         f"Job details:\n{ctx.job_description or '(none)'}\n\n"
-        f"Resume:\n{ctx.resume or '(none)'}\n\n"
+        f"Candidate background (resume/profile):\n{ctx.resume or '(none)'}\n\n"
+        f"Evaluate how well the answer fits the role and the candidate's stated background.\n\n"
         f"Full interview transcript:\n{_format_transcript(state)}"
     )
     return _call_evaluation_llm(client, ctx.mode, user_content)

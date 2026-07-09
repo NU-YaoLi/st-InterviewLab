@@ -1,8 +1,8 @@
 # InterviewLab (Streamlit) — AI Mock Interviewer
 
-InterviewLab is a Streamlit web app for **behavioral** and **technical** mock interviews. It uses OpenAI for conversational interviewing, optional audio transcription/TTS, and a post-interview evaluation dashboard with scores and feedback.
+InterviewLab is a Streamlit web app for **behavioral** and **technical** mock interviews. It uses AI for conversational interviewing, voice transcription/TTS, and a post-interview evaluation dashboard with scores and feedback.
 
-Each user supplies their **own OpenAI API key in the app UI** — nothing is stored in code or server secrets.
+The app owner configures the AI service via Streamlit secrets — interviewees do not enter credentials in the UI.
 
 ## What it does
 
@@ -22,7 +22,7 @@ Each user supplies their **own OpenAI API key in the app UI** — nothing is sto
 ### Prerequisites
 
 - Python 3.11+ (3.14 supported; entrypoint uses the same loader pattern as [st-Quizzly](https://github.com/NU-YaoLi/st-Quizzly))
-- An OpenAI API key
+- Streamlit secrets with `OPENAI_API_KEY` (see `.streamlit/secrets.toml.example`)
 
 ### Install
 
@@ -36,7 +36,7 @@ pip install -r requirements.txt
 streamlit run interviewlab_main.py
 ```
 
-Enter your OpenAI API key in the **sidebar** when the app loads.
+Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` and set `OPENAI_API_KEY` before running locally.
 
 ## Deploy to Streamlit Community Cloud
 
@@ -57,15 +57,16 @@ Commit the repo (do **not** commit `.streamlit/secrets.toml`).
 4. **Advanced settings → Python version:** 3.11 or newer recommended
 5. Click **Deploy**
 
-### 3. Secrets (optional)
+### 3. Secrets
 
-No secrets are required for normal operation — users enter their API key in the sidebar.
-
-Optional debug logging only:
+Set the AI service credentials in Streamlit Cloud (**App settings → Secrets**):
 
 ```toml
-# .streamlit/secrets.toml (Streamlit Cloud → App settings → Secrets)
-DEBUG = true
+# .streamlit/secrets.toml
+OPENAI_API_KEY = "sk-your-key-here"
+
+# Optional debug logging:
+# DEBUG = true
 ```
 
 See `.streamlit/secrets.toml.example`.
@@ -73,8 +74,7 @@ See `.streamlit/secrets.toml.example`.
 ### 4. After deploy
 
 - Share the public URL with users
-- Each user pastes their own OpenAI API key in the sidebar
-- For **Audio + Text** mode, users must allow microphone access in the browser (HTTPS is provided by Streamlit Cloud)
+- For voice practice, users must allow microphone access in the browser (HTTPS is provided by Streamlit Cloud)
 
 ## Configuration knobs
 
@@ -106,7 +106,5 @@ fntnd/                     # Frontend (UI, session state, views)
 
 ## Notes / caveats
 
-- **API keys:** Stored only in the user's browser session (`st.session_state`). They are sent to OpenAI with each request and are not persisted on the server.
 - **Session lifetime:** On Streamlit Cloud, session state resets when the app cold-starts or the user opens a new session.
-- **Audio:** Requires Streamlit ≥ 1.33 and browser microphone permission. If transcription fails, switch to **Text Only** mode.
-- **Costs:** All OpenAI usage is billed to the API key entered by the user.
+- **Audio:** Requires Streamlit ≥ 1.33 and browser microphone permission.

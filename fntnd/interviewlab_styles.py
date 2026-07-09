@@ -264,6 +264,120 @@ html, body, [class*="css"] {
     margin-bottom: 1rem;
 }
 
+/* Zoom-like meeting room */
+.meeting-room {
+    background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+    min-height: 340px;
+    display: flex;
+    flex-direction: column;
+}
+
+.meeting-participants {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex: 1;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.participant-tile {
+    background: #334155;
+    border-radius: 12px;
+    padding: 1.5rem 1rem;
+    width: 200px;
+    min-height: 180px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border: 3px solid transparent;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.participant-tile.speaking {
+    border-color: #22c55e;
+    box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.35), 0 0 24px rgba(34, 197, 94, 0.2);
+}
+
+.participant-avatar {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: #475569;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    margin-bottom: 0.75rem;
+}
+
+.participant-tile.speaking .participant-avatar {
+    background: #166534;
+}
+
+.participant-name {
+    color: #f1f5f9;
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 0.25rem;
+}
+
+.participant-status {
+    color: #94a3b8;
+    font-size: 0.75rem;
+}
+
+.participant-tile.speaking .participant-status {
+    color: #4ade80;
+}
+
+.live-caption-bar {
+    background: rgba(0, 0, 0, 0.75);
+    border-radius: 8px;
+    padding: 0.85rem 1.25rem;
+    margin-top: 1rem;
+    text-align: center;
+    animation: caption-fade-in 0.25s ease;
+}
+
+.live-caption-speaker {
+    color: #94a3b8;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 0.35rem;
+}
+
+.live-caption-text {
+    color: #ffffff;
+    font-size: 1rem;
+    line-height: 1.5;
+}
+
+@keyframes caption-fade-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.meeting-controls {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: center;
+    margin-top: 0.5rem;
+}
+
+.meeting-idle-hint {
+    color: #64748b;
+    font-size: 0.85rem;
+    text-align: center;
+    padding: 2rem 1rem;
+}
+
 .eval-hero {
     text-align: center;
     padding: 2rem 1rem;
@@ -345,8 +459,75 @@ section[data-testid="stSidebar"] { display: none; }
 
 .feature-icon { font-size: 1.5rem; margin-bottom: 0.35rem; }
 .feature-text { font-size: 0.8rem; color: #64748b; font-weight: 500; }
+
+.generating-overlay {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4rem 2rem;
+    margin: 2rem auto;
+    max-width: 420px;
+    text-align: center;
+}
+
+.generating-spinner {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.generating-square {
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    animation: generating-bounce 1.2s ease-in-out infinite;
+}
+
+.generating-square:nth-child(2) { animation-delay: 0.15s; }
+.generating-square:nth-child(3) { animation-delay: 0.3s; }
+.generating-square:nth-child(4) { animation-delay: 0.45s; }
+
+@keyframes generating-bounce {
+    0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
+    40% { transform: scale(1); opacity: 1; }
+}
+
+.generating-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 0.5rem;
+}
+
+.generating-subtitle {
+    font-size: 0.9rem;
+    color: #64748b;
+    line-height: 1.5;
+}
 </style>
 """
+
+
+def render_generating_overlay() -> None:
+    st.markdown(
+        """
+        <div class="generating-overlay">
+            <div class="generating-spinner">
+                <div class="generating-square"></div>
+                <div class="generating-square"></div>
+                <div class="generating-square"></div>
+                <div class="generating-square"></div>
+            </div>
+            <div class="generating-title">Preparing your mock interview</div>
+            <div class="generating-subtitle">
+                Tailoring questions to your role and generating the first question…
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def inject_styles() -> None:

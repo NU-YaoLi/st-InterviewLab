@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
+
 import streamlit as st
+
+from bknd.interviewlab_resume import ResumeParseError, combine_resume_sources, extract_resume_text
+from fntnd.interviewlab_errors import show_validation_error
 
 _MODE_OPTIONS = [
     (
@@ -38,6 +43,39 @@ def _section_title(title: str, subtitle: str = "") -> None:
 def _set_session_value(key: str, value: object) -> None:
     if st.session_state.get(key) != value:
         st.session_state[key] = value
+
+
+def _sync_resume_from_sources(typed_background: str, uploaded_resume) -> None:
+    """Parse uploaded resume if needed and store the combined background text."""
+    uploaded_text = st.session_state.get("resume_file_text", "")
+    uploaded_name = st.session_state.get("resume_file_name", "")
+
+    if uploaded_resume is not None:
+        file_bytes = uploaded_resume.getvalue()
+        file_hash = hashlib.md5(file_bytes).hexdigest()
+        if file_hash != st.session_state.get("resume_file_hash"):
+            try:
+                uploaded_text = extract_resume_text(uploaded_resume)
+                st.session_state["resume_file_text"] = uploaded_text
+                st.session_state["resume_file_name"] = uploaded_resume.name
+                st.session_state["resume_file_hash"] = file_hash
+                uploaded_name = uploaded_resume.name
+                st.success(f"Resume uploaded: {uploaded_resume.name}")
+            except ResumeParseError as exc:
+                st.error(str(exc))
+                return
+    elif st.session_state.get("resume_file_hash") is not None:
+        uploaded_text = ""
+        uploaded_name = ""
+        st.session_state["resume_file_text"] = ""
+        st.session_state["resume_file_name"] = ""
+        st.session_state["resume_file_hash"] = None
+
+    st.session_state["resume"] = combine_resume_sources(
+        typed_text=typed_background,
+        uploaded_text=uploaded_text,
+        uploaded_name=uploaded_name,
+    )
 
 
 def _option_card_label(icon: str, title: str, description: str) -> str:
@@ -187,12 +225,31 @@ def render_setup_view() -> None:
         st.session_state["target_role"] = ""
         st.session_state["target_level"] = ""
 
-        st.session_state["resume"] = st.text_area(
-            "Your background (optional)",
-            value=st.session_state.get("resume", ""),
-            height=80,
-            placeholder="Paste your resume or a brief summary of your experience…",
+        _section_title(
+            "Your Background",
+            "Paste notes or upload your resume — questions will be tailored to your experience and the job.",
         )
+
+        typed_background = st.text_area(
+            "Background notes",
+            value=st.session_state.get("resume_typed", st.session_state.get("resume", "")),
+            height=80,
+            placeholder="Or paste a brief summary of your experience, skills, and projects…",
+            label_visibility="collapsed",
+        )
+        st.session_state["resume_typed"] = typed_background
+
+        uploaded_resume = st.file_uploader(
+            "Upload resume (PDF, Word, or TXT)",
+            type=["pdf", "docx", "txt"],
+            help="Optional. We extract text from your resume to personalize interview questions.",
+        )
+
+        _sync_resume_from_sources(typed_background, uploaded_resume)
+
+        resume_file_name = st.session_state.get("resume_file_name", "")
+        if resume_file_name and not uploaded_resume:
+            st.caption(f"Resume loaded: **{resume_file_name}** (upload a new file to replace)")
 
         st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
         _mode_selector_fragment()
@@ -203,8 +260,14 @@ def render_setup_view() -> None:
         st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
 
         if st.button("Begin Mock Interview →", type="primary", use_container_width=True):
-            st.session_state["_start_requested"] = True
-            st.session_state["ai_voice_enabled"] = True
+            job_details = st.session_state.get("job_description", "").strip()
+            if not job_details:
+                show_validation_error(
+                    "Please enter **job details** before starting your mock interview."
+                )
+            else:
+                st.session_state["_start_requested"] = True
+                st.session_state["ai_voice_enabled"] = True
 
 
 def render_landing_view() -> None:
