@@ -215,23 +215,48 @@ section.main > div.block-container {
 .interview-header {
     background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%);
     border-radius: 16px;
-    padding: 1.5rem 2rem;
+    padding: 1.25rem 1.5rem;
     color: white;
     margin-bottom: 1.5rem;
+    width: 100%;
+    box-sizing: border-box;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    flex: 1;
-    width: 100%;
 }
 
-div[data-testid="stHorizontalBlock"] .interview-header {
-    margin-bottom: 0;
+.interview-header-marker {
+    display: none;
 }
 
-div[data-testid="stHorizontalBlock"]:has(.interview-header) {
+/* Full-width purple header row: title + timer + End Interview */
+div:has(> div > .interview-header-marker) + div[data-testid="stHorizontalBlock"],
+div:has(> .interview-header-marker) + div[data-testid="stHorizontalBlock"] {
+    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%);
+    border-radius: 16px;
+    padding: 1.15rem 1.35rem;
     margin-bottom: 1.5rem;
+    align-items: center;
     gap: 0.75rem;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+div:has(> div > .interview-header-marker) + div[data-testid="stHorizontalBlock"] .interview-header-title,
+div:has(> .interview-header-marker) + div[data-testid="stHorizontalBlock"] .interview-header-title,
+div:has(> div > .interview-header-marker) + div[data-testid="stHorizontalBlock"] .status-badge,
+div:has(> .interview-header-marker) + div[data-testid="stHorizontalBlock"] .status-badge,
+div:has(> div > .interview-header-marker) + div[data-testid="stHorizontalBlock"] .interview-timer,
+div:has(> .interview-header-marker) + div[data-testid="stHorizontalBlock"] .interview-timer {
+    color: white;
+}
+
+div:has(> div > .interview-header-marker) + div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button,
+div:has(> .interview-header-marker) + div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button {
+    background: rgba(255, 255, 255, 0.95) !important;
+    color: #312e81 !important;
+    border: none !important;
+    font-weight: 600;
 }
 
 .interview-header-title { font-size: 1.1rem; font-weight: 600; opacity: 0.9; }

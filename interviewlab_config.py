@@ -93,6 +93,7 @@ SESSION_DEFAULTS: dict[str, Any] = {
     "live_caption_text": None,
     "live_caption_speaker": None,
     "live_caption_expires_at": None,
+    "current_question_text": None,
     "active_speaker": None,
     "interview_phase": "listening",
     "pending_answer_audio": None,
@@ -102,7 +103,10 @@ SESSION_DEFAULTS: dict[str, Any] = {
     "mic_turn_id": 0,
     "mic_auto_start": False,
     "_stop_mic_now": False,
-    "last_mic_payload": None,
+    "mic_listen_deadline": None,
+    "last_audio_payload_id": None,
+    "_silence_handled": False,
+    "_mic_open_after": None,
 }
 
 # -------------------

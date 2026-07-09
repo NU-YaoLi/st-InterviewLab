@@ -41,14 +41,20 @@ def _estimate_speech_seconds(text: str) -> float:
     return max(3.0, min(45.0, words * 0.42))
 
 
-def _set_live_caption(speaker: str, text: str, *, duration: float | None = None) -> None:
-    st.session_state["live_caption_speaker"] = speaker
+def _set_question_caption(text: str) -> None:
+    """Keep the current interviewer question visible until the answer is submitted."""
+    st.session_state["live_caption_speaker"] = "interviewer"
     st.session_state["live_caption_text"] = text
-    st.session_state["active_speaker"] = speaker
-    if duration is not None:
-        st.session_state["live_caption_expires_at"] = time.time() + duration
-    else:
-        st.session_state["live_caption_expires_at"] = None
+    st.session_state["active_speaker"] = "interviewer"
+    st.session_state["live_caption_expires_at"] = None
+    st.session_state["current_question_text"] = text
+
+
+def _set_you_caption(text: str, *, duration: float = 4.0) -> None:
+    st.session_state["live_caption_speaker"] = "you"
+    st.session_state["live_caption_text"] = text
+    st.session_state["active_speaker"] = "you"
+    st.session_state["live_caption_expires_at"] = time.time() + duration
 
 
 def _clear_live_caption() -> None:
@@ -58,26 +64,28 @@ def _clear_live_caption() -> None:
     st.session_state["active_speaker"] = None
 
 
-def _sync_interview_phase_timers() -> None:
-    """Open the mic when TTS finishes and expire interviewer captions."""
+def _open_mic_turn() -> None:
+    """Switch from interviewer speaking to candidate listening and show the mic."""
+    st.session_state["interview_phase"] = "listening"
+    st.session_state["mic_auto_start"] = True
+    st.session_state["active_speaker"] = "you"
+    st.session_state.pop("_mic_open_after", None)
+    # Keep the interviewer question caption visible while the candidate answers.
+    if st.session_state.get("current_question_text"):
+        st.session_state["live_caption_speaker"] = "interviewer"
+        st.session_state["live_caption_text"] = st.session_state["current_question_text"]
+        st.session_state["live_caption_expires_at"] = None
+
+
+def _sync_interview_phase_timers() -> bool:
+    """Open the mic when TTS finishes. Returns True if an app-level rerun is needed."""
     open_after = st.session_state.get("_mic_open_after")
     if open_after and time.time() >= open_after:
         if st.session_state.get("interview_phase") == "interviewer_speaking":
-            st.session_state["interview_phase"] = "listening"
-            st.session_state["mic_auto_start"] = True
+            _open_mic_turn()
+            return True
         st.session_state.pop("_mic_open_after", None)
-
-    expires = st.session_state.get("live_caption_expires_at")
-    speaker = st.session_state.get("live_caption_speaker")
-    if expires and time.time() > expires:
-        if (
-            speaker == "interviewer"
-            and st.session_state.get("interview_phase") == "interviewer_speaking"
-        ):
-            st.session_state["interview_phase"] = "listening"
-            st.session_state["mic_auto_start"] = True
-            st.session_state.pop("_mic_open_after", None)
-        _clear_live_caption()
+    return False
 
 
 def _timer_class(remaining_seconds: float) -> str:
@@ -88,35 +96,40 @@ def _timer_class(remaining_seconds: float) -> str:
     return "interview-timer"
 
 
-def _render_interview_header(state: object, remaining: float) -> None:
-    """Header bar with End Interview on the right of the session summary."""
-    del remaining
+def _render_interview_header(state: object) -> None:
+    """Full-width header card with End Interview on the right."""
     timer_cls = _timer_class(get_remaining_seconds(state))
     mode = st.session_state.get("interview_mode", "Behavioral")
     role = get_job_display_label(st.session_state)
     duration = st.session_state.get("interview_duration_minutes", 20)
+    timer_text = format_remaining_time(state)
 
-    with st.container(horizontal=True, vertical_alignment="center"):
+    st.markdown('<div class="interview-header-marker"></div>', unsafe_allow_html=True)
+    left, mid, right = st.columns([5, 2, 1.6], vertical_alignment="center")
+    with left:
         st.markdown(
             f"""
-            <div class="interview-header">
-                <div>
-                    <div class="interview-header-title">{mode} Interview · {role}</div>
-                    <div class="status-badge" style="margin-top:0.5rem">
-                        <span class="status-dot"></span> Live · English voice
-                    </div>
-                </div>
-                <div style="text-align:right">
-                    <div class="{timer_cls}">{format_remaining_time(state)}</div>
-                    <div style="font-size:0.8rem;opacity:0.7;margin-top:0.25rem">
-                        {duration} min session
-                    </div>
+            <div class="interview-header-title">{mode} Interview · {role}</div>
+            <div class="status-badge" style="margin-top:0.5rem">
+                <span class="status-dot"></span> Live · English voice
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with mid:
+        st.markdown(
+            f"""
+            <div style="text-align:right">
+                <div class="{timer_cls}">{timer_text}</div>
+                <div style="font-size:0.8rem;opacity:0.7;margin-top:0.25rem;color:rgba(255,255,255,0.85)">
+                    {duration} min session
                 </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
-        if st.button("End Interview", type="secondary"):
+    with right:
+        if st.button("End Interview", type="secondary", key="end_interview_btn", use_container_width=True):
             st.session_state["_show_end_interview_confirm"] = True
             st.rerun(scope="app")
 
@@ -152,8 +165,8 @@ def _inject_mic_control_script(*, action: str) -> None:
           let tries = 0;
           const timer = setInterval(function() {{
             tries += 1;
-            if (run() || tries > 25) clearInterval(timer);
-          }}, 250);
+            if (run() || tries > 40) clearInterval(timer);
+          }}, 200);
         }})();
         </script>
         """,
@@ -180,8 +193,9 @@ def _play_tts_autoplay(audio_bytes: bytes | None, caption_text: str = "") -> Non
         height=0,
     )
     if caption_text:
-        _set_live_caption("interviewer", caption_text, duration=speech_seconds)
+        _set_question_caption(caption_text)
     st.session_state["interview_phase"] = "interviewer_speaking"
+    st.session_state["active_speaker"] = "interviewer"
     st.session_state["_mic_open_after"] = time.time() + speech_seconds
 
 
@@ -215,10 +229,9 @@ def _render_meeting_room() -> None:
 
 
 def _render_live_caption() -> None:
-    _sync_interview_phase_timers()
-    text = st.session_state.get("live_caption_text")
-    speaker = st.session_state.get("live_caption_speaker")
-    if not text or not speaker:
+    text = st.session_state.get("live_caption_text") or st.session_state.get("current_question_text")
+    speaker = st.session_state.get("live_caption_speaker") or "interviewer"
+    if not text:
         return
 
     label = "Interviewer" if speaker == "interviewer" else "You"
@@ -251,10 +264,12 @@ def _check_silence_timeout(api_key: str) -> bool:
     return True
 
 
-@st.fragment(run_every=2)
+@st.fragment(run_every=1)
 def _timer_fragment(api_key: str) -> None:
-    """Auto-refresh timer and expire live captions."""
-    _sync_interview_phase_timers()
+    """Auto-refresh timer; trigger full rerun when mic should open."""
+    if _sync_interview_phase_timers():
+        st.rerun(scope="app")
+        return
 
     if not st.session_state.get("interview_session_started"):
         return
@@ -266,8 +281,7 @@ def _timer_fragment(api_key: str) -> None:
     if _check_silence_timeout(api_key):
         return
 
-    remaining = get_remaining_seconds(state)
-    _render_interview_header(state, remaining)
+    _render_interview_header(state)
 
     if is_time_expired(state):
         _handle_time_expiry(api_key, state)
@@ -285,13 +299,13 @@ def _render_live_header() -> None:
     st.markdown(
         f"""
         <div class="interview-header">
-            <div>
+            <div class="interview-header-left">
                 <div class="interview-header-title">{mode} Interview · {role}</div>
                 <div class="status-badge" style="margin-top:0.5rem">
                     <span class="status-dot"></span> Starting · English voice
                 </div>
             </div>
-            <div style="text-align:right">
+            <div class="interview-header-right">
                 <div class="interview-timer">{duration:02d}:00</div>
                 <div style="font-size:0.8rem;opacity:0.7;margin-top:0.25rem">
                     Interview starting…
@@ -313,6 +327,7 @@ def _handle_time_expiry(api_key: str, state) -> None:
         with st.spinner("Generating your evaluation…"):
             run_evaluation(client, state)
         _clear_live_caption()
+        st.session_state.pop("current_question_text", None)
         apply_state_to_session(state, st.session_state)
         st.rerun(scope="app")
     except Exception as exc:
@@ -327,6 +342,7 @@ def end_interview_and_show_results(api_key: str) -> None:
             end_interview_manually(state, client)
             run_evaluation(client, state)
         _clear_live_caption()
+        st.session_state.pop("current_question_text", None)
         apply_state_to_session(state, st.session_state)
         st.rerun(scope="app")
     except Exception as exc:
@@ -337,12 +353,12 @@ def _process_answer(api_key: str, user_answer: str) -> None:
     state = state_from_session(st.session_state)
     try:
         client = get_openai_client(api_key)
+        # Clear previous question only once the answer is being processed.
         _clear_live_caption()
+        st.session_state.pop("current_question_text", None)
 
         with st.spinner("Interviewer is thinking…"):
             result = process_user_response(state, client, user_answer)
-
-        _clear_live_caption()
 
         if PER_TURN_EVALUATION and result.get("user_answer") and state.responses:
             with st.spinner("Evaluating your response…"):
@@ -373,6 +389,7 @@ def _process_answer(api_key: str, user_answer: str) -> None:
             st.session_state["mic_turn_id"] = st.session_state.get("mic_turn_id", 0) + 1
         st.session_state.pop("last_audio_payload_id", None)
         st.session_state.pop("mic_listen_deadline", None)
+        st.session_state.pop("_silence_handled", None)
         st.rerun(scope="app")
 
     except Exception as exc:
@@ -391,6 +408,7 @@ def _handle_begin_session(api_key: str) -> None:
             state.last_tts_audio = generate_speech(client, last_message)
             st.session_state["_autoplay_caption"] = last_message
             st.session_state["interview_phase"] = "interviewer_speaking"
+            _set_question_caption(last_message)
 
         apply_state_to_session(state, st.session_state)
         st.session_state["_autoplay_tts"] = True
@@ -400,7 +418,9 @@ def _handle_begin_session(api_key: str) -> None:
 
 
 def _render_voice_input(api_key: str) -> None:
-    _sync_interview_phase_timers()
+    if _sync_interview_phase_timers():
+        st.rerun(scope="app")
+        return
 
     phase = st.session_state.get("interview_phase")
     if phase not in ("listening", "interviewer_speaking"):
@@ -414,8 +434,8 @@ def _render_voice_input(api_key: str) -> None:
         return
 
     st.markdown(
-        '<p class="mic-active-hint">🎙️ Your turn — microphone is live. '
-        f'Speak naturally, click **Finish Answering**, or stay quiet for {SILENCE_SUBMIT_SECONDS}s to continue.</p>',
+        '<p class="mic-active-hint">🎙️ Your turn — speak your answer below. '
+        f'Click <strong>Finish Answering</strong> when done, or stay quiet for {SILENCE_SUBMIT_SECONDS}s to continue.</p>',
         unsafe_allow_html=True,
     )
 
@@ -443,13 +463,18 @@ def _render_voice_input(api_key: str) -> None:
         return
 
     if audio_value is not None:
-        payload_id = f"{turn_id}:{audio_value.size}"
+        payload_id = f"{turn_id}:{getattr(audio_value, 'size', len(audio_value.getvalue()))}"
         if payload_id != st.session_state.get("last_audio_payload_id"):
             st.session_state["last_audio_payload_id"] = payload_id
             st.session_state.pop("mic_listen_deadline", None)
             _transcribe_and_submit(api_key, audio_value.getvalue(), suffix=".wav")
+            return
 
     if st.button("Finish Answering →", type="primary", use_container_width=True):
+        if audio_value is not None:
+            st.session_state.pop("mic_listen_deadline", None)
+            _transcribe_and_submit(api_key, audio_value.getvalue(), suffix=".wav")
+            return
         st.session_state["_stop_mic_now"] = True
         st.rerun(scope="app")
 
@@ -471,7 +496,7 @@ def _transcribe_and_submit(api_key: str, audio_bytes: bytes, *, suffix: str) -> 
         if not is_english_text(transcribed):
             st.warning(NON_ENGLISH_UI_MESSAGE)
 
-        _set_live_caption("you", transcribed, duration=4.0)
+        _set_you_caption(transcribed, duration=4.0)
         _process_answer(api_key, transcribed)
     except Exception as exc:
         _clear_live_caption()
@@ -492,10 +517,8 @@ def render_interview_view(api_key: str) -> None:
             _play_tts_autoplay(audio, caption)
             st.session_state["last_tts_audio"] = None
         elif caption:
-            _set_live_caption("interviewer", caption, duration=_estimate_speech_seconds(caption))
-            st.session_state["interview_phase"] = "listening"
-            st.session_state["mic_auto_start"] = True
-            st.session_state["_mic_open_after"] = time.time()
+            _set_question_caption(caption)
+            _open_mic_turn()
 
     if session_started:
         _timer_fragment(api_key)
