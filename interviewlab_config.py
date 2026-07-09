@@ -21,14 +21,16 @@ APP_TITLE = "AI Mock Interviewer"
 # Model configuration
 # -------------------
 
-# Primary chat model for interview dialogue and evaluation.
+# Post-interview evaluation (and any non-realtime text tasks).
 INTERVIEWLAB_MODEL = "gpt-5-mini"
 
-# Speech-to-text (primary + fallback for accounts without the latest audio models).
+# Live mock interview — OpenAI Realtime voice agent (WebRTC).
+REALTIME_MODEL = "gpt-realtime-2.1"
+REALTIME_VOICE = "alloy"
+
+# Legacy audio models (unused by the live Realtime path; kept for reference).
 WHISPER_MODEL = "gpt-4o-transcribe"
 WHISPER_FALLBACK_MODEL = "whisper-1"
-
-# Text-to-speech for optional AI voice responses.
 TTS_MODEL = "gpt-4o-mini-tts"
 TTS_FALLBACK_MODEL = "tts-1"
 TTS_VOICE = "alloy"
@@ -53,10 +55,6 @@ INTERVIEW_MODES = ("Behavioral", "Technical")
 
 # Voice-only spoken interviews (English).
 SUPPORTED_INTERVIEW_LANGUAGE = "English"
-
-# Auto-submit the candidate's answer after this many seconds of silence.
-ANSWER_COOLDOWN_SECONDS = 15
-SILENCE_SUBMIT_SECONDS = ANSWER_COOLDOWN_SECONDS
 
 # Default session keys — mirrored by ``fntnd.interviewlab_state.init_session_state``.
 SESSION_DEFAULTS: dict[str, Any] = {
@@ -89,26 +87,19 @@ SESSION_DEFAULTS: dict[str, Any] = {
     "interview_started_at": None,
     "interview_session_started": False,
     "setup_complete": False,
-    "last_audio_hash": None,
     "live_caption_text": None,
     "live_caption_speaker": None,
-    "live_caption_expires_at": None,
-    "current_question_text": None,
     "active_speaker": None,
-    "interview_phase": "listening",
-    "pending_answer_audio": None,
-    "pending_answer_text": None,
-    "next_question_at": None,
-    "_auto_start_session": False,
-    "mic_turn_id": 0,
-    "mic_auto_start": False,
-    "_stop_mic_now": False,
-    "_finish_wait_ticks": 0,
-    "last_audio_payload_id": None,
-    "_mic_open_after": None,
-    "_pending_audio_bytes": None,
-    "_pending_audio_suffix": ".wav",
+    "interview_phase": "connecting",
+    "realtime_ephemeral_key": None,
+    "realtime_session_id": 0,
+    "realtime_transcript": [],
+    "last_realtime_payload": None,
+    "_disconnect_realtime": False,
     "_time_expired": False,
+    "_show_end_interview_confirm": False,
+    "_generating_interview": False,
+    "_generating_worker_started": False,
 }
 
 # -------------------

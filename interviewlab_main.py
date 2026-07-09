@@ -30,6 +30,8 @@ if sys.path[0] != _root_str:
 _REQUIRED_CONFIG_NAMES = (
     "APP_TITLE",
     "INTERVIEWLAB_MODEL",
+    "REALTIME_MODEL",
+    "REALTIME_VOICE",
     "WHISPER_MODEL",
     "WHISPER_FALLBACK_MODEL",
     "TTS_MODEL",
@@ -149,12 +151,17 @@ def _bootstrap() -> None:
     _load_module("bknd.interviewlab_engine", _root / "bknd" / "interviewlab_engine.py")
     _reinforce_config()
     _load_module("bknd.interviewlab_evaluator", _root / "bknd" / "interviewlab_evaluator.py")
+    _load_module("bknd.interviewlab_realtime", _root / "bknd" / "interviewlab_realtime.py")
 
     _load_package("fntnd", _root / "fntnd" / "__init__.py")
     _reinforce_config()
     _load_module("fntnd.interviewlab_state", _root / "fntnd" / "interviewlab_state.py")
     _load_module("fntnd.interviewlab_errors", _root / "fntnd" / "interviewlab_errors.py")
     _load_module("fntnd.interviewlab_styles", _root / "fntnd" / "interviewlab_styles.py")
+    _load_module(
+        "fntnd.interviewlab_realtime_component",
+        _root / "fntnd" / "interviewlab_realtime_component.py",
+    )
 
     _load_package("fntnd.views", _root / "fntnd" / "views" / "__init__.py")
     _load_module(
@@ -189,8 +196,21 @@ def _bootstrap() -> None:
 _bootstrap()
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from interviewlab_config import APP_TITLE
+
+_realtime_component_dir = (_root / "fntnd" / "components" / "realtime_interview").resolve()
+if not (_realtime_component_dir / "index.html").is_file():
+    raise FileNotFoundError(f"Realtime component frontend missing: {_realtime_component_dir}")
+
+_interviewlab_realtime = components.declare_component(
+    "interviewlab_realtime",
+    path=str(_realtime_component_dir),
+)
+sys.modules["fntnd.interviewlab_realtime_component"].set_realtime_component(
+    _interviewlab_realtime
+)
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🎙️", layout="wide")
 

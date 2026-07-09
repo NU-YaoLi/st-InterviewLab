@@ -127,10 +127,9 @@ def show_end_interview_confirmation(on_confirm: Callable[[], None]) -> None:
 
 @st.dialog("Preparing your mock interview")
 def show_generating_dialog(prepare_callback) -> None:
-    """Centered modal shown while the first interview question is generated."""
+    """Centered modal shown while the Realtime interview session is prepared."""
     st.markdown(
-        "Tailoring questions to your role and background, then generating "
-        "your first question."
+        "Connecting a live voice interviewer tailored to your role and background."
     )
     with st.spinner("Please wait…"):
         if st.session_state.get("_generating_worker_started"):

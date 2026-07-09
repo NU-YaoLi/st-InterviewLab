@@ -1,20 +1,15 @@
 # InterviewLab (Streamlit) — AI Mock Interviewer
 
-InterviewLab is a Streamlit web app for **behavioral** and **technical** mock interviews. It uses AI for conversational interviewing, voice transcription/TTS, and a post-interview evaluation dashboard with scores and feedback.
-
-The app owner configures the AI service via Streamlit secrets — interviewees do not enter credentials in the UI.
+InterviewLab is a Streamlit web app for **behavioral** and **technical** mock interviews. Live interviews use OpenAI’s **Realtime API** (WebRTC speech-to-speech). Post-interview scoring uses a chat model. The app owner configures the AI service via Streamlit secrets — interviewees do not enter credentials in the UI.
 
 ## What it does
 
 - **Interview modes**
-  - **Behavioral** — STAR-method follow-ups from an HR-style interviewer
+  - **Behavioral** — natural follow-ups from an HR-style interviewer
   - **Technical** — role-specific questions with depth/accuracy follow-ups
-- **Personalization** — target role, level, job description, and resume drive question selection
-- **Input modes**
-  - **Audio + Text** — record answers (Streamlit `audio_input`) + optional typed replies
-  - **Text Only** — chat-style text answers
-- **Optional AI voice** — TTS playback for interviewer questions
-- **5-question flow** — progress bar, follow-ups, opening/closing messages
+- **Personalization** — job details and resume/background drive the live interviewer
+- **Live Realtime voice** — browser WebRTC session (`gpt-realtime-2.1`); speak naturally, no Whisper/TTS turn loop
+- **Timed sessions** — 15 / 20 / 30 / 45 minute interviews with End Interview confirmation
 - **Evaluation dashboard** — overall score, dimension breakdown, strengths, improvements, sample answer
 
 ## Quick start (local)

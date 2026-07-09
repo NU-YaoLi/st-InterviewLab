@@ -108,7 +108,7 @@ def begin_live_session(state: InterviewState) -> None:
     state.interview_started_at = time.time()
 
 
-def _context_block(ctx: InterviewContext) -> str:
+def context_block(ctx: InterviewContext) -> str:
     resume_text = ctx.resume or "(none provided)"
     job_text = ctx.job_description or ctx.target_role or "(none provided)"
     return (
@@ -156,7 +156,7 @@ def format_remaining_time(state: InterviewState) -> str:
 
 def _build_messages(state: InterviewState, instruction: str = "") -> list[dict[str, str]]:
     ctx = state.to_context()
-    system_content = get_system_prompt(state.interview_mode) + "\n\n" + _context_block(ctx)
+    system_content = get_system_prompt(state.interview_mode) + "\n\n" + context_block(ctx)
     if instruction:
         system_content += f"\n\nTurn instruction:\n{instruction}"
 

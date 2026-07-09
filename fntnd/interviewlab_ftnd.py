@@ -1,16 +1,15 @@
 """
 Top-level Streamlit UI for InterviewLab.
 
-Modern main-page flow: setup → live interview → evaluation dashboard.
+Modern main-page flow: setup → live Realtime interview → evaluation dashboard.
 """
 
 from __future__ import annotations
 
 import streamlit as st
 
-from bknd.interviewlab_audio import synthesize_if_enabled
-from bknd.interviewlab_engine import start_interview
-from bknd.interviewlab_openai import get_openai_client
+from bknd.interviewlab_realtime import create_realtime_client_secret, prepare_realtime_interview
+from bknd.interviewlab_engine import begin_live_session
 from fntnd.interviewlab_errors import (
     display_openai_error,
     queue_validation_error,
@@ -54,19 +53,26 @@ def _handle_start_interview(api_key: str) -> None:
         return
 
     try:
-        client = get_openai_client(api_key)
         state = state_from_session(st.session_state)
-        state.ai_voice_enabled = True
-        first_message = start_interview(state, client)
-        state.last_tts_audio = synthesize_if_enabled(
-            client, first_message, state.ai_voice_enabled
-        )
+        prepare_realtime_interview(state)
+        ephemeral = create_realtime_client_secret(api_key, state)
+        begin_live_session(state)
         apply_state_to_session(state, st.session_state)
+
+        st.session_state["realtime_ephemeral_key"] = ephemeral
+        st.session_state["realtime_session_id"] = (
+            int(st.session_state.get("realtime_session_id") or 0) + 1
+        )
+        st.session_state["realtime_transcript"] = []
+        st.session_state["interview_phase"] = "connecting"
+        st.session_state["active_speaker"] = "interviewer"
+        st.session_state["live_caption_text"] = "Connecting to your interviewer…"
+        st.session_state["live_caption_speaker"] = "interviewer"
+        st.session_state["_disconnect_realtime"] = False
+        st.session_state.pop("last_realtime_payload", None)
+
         st.session_state.pop("_generating_interview", None)
         st.session_state.pop("_generating_worker_started", None)
-        st.session_state["_auto_start_session"] = True
-        st.session_state["_autoplay_tts"] = True
-        st.session_state["_autoplay_caption"] = first_message
         st.rerun()
     except Exception as exc:
         _abort_generating()
@@ -98,8 +104,6 @@ def main() -> None:
             reset_runtime_session()
             st.rerun()
             return
-        # Pop the flag so dismissing the dialog with X does not leave a blank page
-        # (dialog-only return) or reopen forever on the next rerun.
         if st.session_state.pop("_show_end_interview_confirm", False):
             show_end_interview_confirmation(
                 lambda: end_interview_and_show_results(api_key)
