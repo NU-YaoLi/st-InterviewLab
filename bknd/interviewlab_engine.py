@@ -15,8 +15,16 @@ from typing import Any
 
 from openai import OpenAI, OpenAIError
 
-from bknd.interviewlab_openai import create_chat_completion
 from bknd.interviewlab_language import NON_ENGLISH_INTERVIEWER_REMINDER, is_english_text
+from bknd.interviewlab_openai import create_chat_completion
+from interviewlab_config import (
+    DEFAULT_DURATION_MINUTES,
+    FOLLOW_UP_SYSTEM_PROMPT,
+    INTERVIEWLAB_MODEL,
+    TOTAL_QUESTIONS,
+    get_system_prompt,
+    questions_for_duration,
+)
 
 
 @dataclass
