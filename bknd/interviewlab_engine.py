@@ -15,6 +15,7 @@ from typing import Any
 
 from openai import OpenAI, OpenAIError
 
+from bknd.interviewlab_openai import create_chat_completion
 from interviewlab_config import (
     DEFAULT_DURATION_MINUTES,
     FOLLOW_UP_SYSTEM_PROMPT,
@@ -154,7 +155,8 @@ def _build_messages(state: InterviewState, instruction: str = "") -> list[dict[s
 
 def _call_llm(client: OpenAI, messages: list[dict[str, str]], temperature: float = 0.7) -> str:
     try:
-        response = client.chat.completions.create(
+        response = create_chat_completion(
+            client,
             model=INTERVIEWLAB_MODEL,
             messages=messages,
             temperature=temperature,

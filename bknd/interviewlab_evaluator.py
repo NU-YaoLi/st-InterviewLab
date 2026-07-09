@@ -13,6 +13,7 @@ from typing import Any
 from openai import OpenAI, OpenAIError
 
 from bknd.interviewlab_engine import InterviewState
+from bknd.interviewlab_openai import create_chat_completion
 from interviewlab_config import INTERVIEWLAB_MODEL, get_rubric
 
 
@@ -85,7 +86,8 @@ def _call_evaluation_llm(
         {"role": "user", "content": user_content},
     ]
     try:
-        response = client.chat.completions.create(
+        response = create_chat_completion(
+            client,
             model=INTERVIEWLAB_MODEL,
             messages=messages,
             temperature=0.3,
