@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import html
-import time
 
 import streamlit as st
 
@@ -21,8 +20,6 @@ from fntnd.interviewlab_errors import display_openai_error
 from fntnd.interviewlab_realtime_component import render_realtime_interview
 from fntnd.interviewlab_state import apply_state_to_session, get_job_display_label, state_from_session
 from interviewlab_config import REALTIME_SILENCE_DURATION_MS
-
-_FINALIZE_TIMEOUT_SEC = 1.5
 
 
 def _timer_class(remaining_seconds: float) -> str:
@@ -249,18 +246,24 @@ def _apply_realtime_payload(payload: object) -> None:
             st.session_state["_just_connected"] = True
 
 
-def _session_never_went_live() -> bool:
-    """True when WebRTC never connected (failed connect / still connecting)."""
-    if st.session_state.get("interview_started_at") is not None:
-        return False
-    if st.session_state.get("_realtime_connect_failed"):
-        return True
-    if st.session_state.get("_realtime_error"):
-        return True
-    return True
+def _clear_finalize_flags() -> None:
+    for key in (
+        "_realtime_natural_complete",
+        "_time_expired",
+        "_pending_finalize",
+        "_do_finalize",
+        "_finalize_requested_at",
+        "_realtime_disconnected",
+        "_realtime_notice",
+        "_non_english_warned",
+        "_realtime_connect_failed",
+        "_show_end_interview_confirm",
+    ):
+        st.session_state.pop(key, None)
 
 
 def _finalize_and_evaluate(api_key: str, *, closing_note: str | None = None) -> None:
+    """Score from the current transcript and jump to results — do not wait on WebRTC."""
     state = state_from_session(st.session_state)
     transcript = list(st.session_state.get("realtime_transcript") or [])
     sync_transcript_to_state(state, transcript)
@@ -269,102 +272,52 @@ def _finalize_and_evaluate(api_key: str, *, closing_note: str | None = None) -> 
     finalize_realtime_interview(state)
 
     try:
-        # Empty sessions return a local zero score (no LLM). Spinner covers disconnect wait UX.
+        # Empty sessions return a local zero score (no LLM call).
         client = get_openai_client(api_key)
-        with st.spinner("Wrapping up…"):
-            run_evaluation(client, state)
+        run_evaluation(client, state)
         apply_state_to_session(state, st.session_state)
         st.session_state["realtime_ephemeral_key"] = None
-        st.session_state["_disconnect_realtime"] = False
-        for key in (
-            "_realtime_natural_complete",
-            "_time_expired",
-            "_pending_finalize",
-            "_do_finalize",
-            "_finalize_requested_at",
-            "_realtime_disconnected",
-            "_realtime_notice",
-            "_non_english_warned",
-            "_realtime_connect_failed",
-        ):
-            st.session_state.pop(key, None)
-        st.rerun()
+        st.session_state["_disconnect_realtime"] = True
+        _clear_finalize_flags()
     except Exception as exc:
         apply_state_to_session(state, st.session_state)
         display_openai_error(exc)
 
 
 def end_interview_and_show_results(api_key: str) -> None:
-    """End Interview confirmed — disconnect Realtime, then evaluate with fallback."""
-    del api_key  # used by caller for symmetry; finalize reads session key
-    st.session_state["_disconnect_realtime"] = True
-    st.session_state["_pending_finalize"] = "manual"
-    st.session_state["_finalize_requested_at"] = time.time()
-    # Never connected: skip waiting for a WebRTC ack that may never arrive.
-    if _session_never_went_live():
-        st.session_state["_realtime_disconnected"] = True
+    """End Interview confirmed — evaluate immediately; WebRTC cleanup is best-effort."""
+    _finalize_and_evaluate(
+        api_key,
+        closing_note="Thank you — this mock interview has concluded.",
+    )
 
 
 def _handle_time_expiry(api_key: str) -> None:
-    del api_key
     st.session_state["_disconnect_realtime"] = True
-    st.session_state["_pending_finalize"] = "timer"
-    st.session_state["_finalize_requested_at"] = time.time()
-    if _session_never_went_live():
-        st.session_state["_realtime_disconnected"] = True
-
-
-def _should_finalize_now() -> str | None:
-    """Return finalize reason when disconnect ack arrived or timeout elapsed."""
-    pending = st.session_state.get("_pending_finalize")
-    if not pending:
-        return None
-    if st.session_state.get("_realtime_disconnected"):
-        return str(pending)
-    if _session_never_went_live():
-        return str(pending)
-    started = st.session_state.get("_finalize_requested_at")
-    if started is not None and (time.time() - float(started)) >= _FINALIZE_TIMEOUT_SEC:
-        return str(pending)
-    return None
-
-
-@st.fragment(run_every=1)
-def _finalize_watch_fragment() -> None:
-    """Ensure finalize timeout fires even when the WebRTC iframe is hung."""
-    if not st.session_state.get("_pending_finalize"):
-        return
-    if _should_finalize_now():
-        st.rerun()
+    _finalize_and_evaluate(
+        api_key,
+        closing_note="Time is up. Thank you — this mock interview has concluded.",
+    )
 
 
 def render_interview_view(api_key: str) -> None:
     from fntnd.interviewlab_state import reset_runtime_session
 
-    pending = st.session_state.pop("_do_finalize", None)
-    if pending == "manual":
-        _finalize_and_evaluate(
-            api_key,
-            closing_note="Thank you — this mock interview has concluded.",
-        )
-        return
-    if pending == "timer":
-        _finalize_and_evaluate(
-            api_key,
-            closing_note="Time is up. Thank you — this mock interview has concluded.",
-        )
-        return
-    if pending == "natural":
-        _finalize_and_evaluate(api_key)
-        return
-
     if st.session_state.pop("_time_expired", False):
         _handle_time_expiry(api_key)
+        st.rerun()
+        return
 
     if st.session_state.pop("_realtime_natural_complete", False):
         st.session_state["_disconnect_realtime"] = True
-        st.session_state["_pending_finalize"] = "natural"
-        st.session_state["_finalize_requested_at"] = time.time()
+        _finalize_and_evaluate(api_key)
+        st.rerun()
+        return
+
+    # Interview already finalized (e.g. from End dialog) — leave this view.
+    if st.session_state.get("interview_complete"):
+        st.rerun()
+        return
 
     ephemeral = st.session_state.get("realtime_ephemeral_key")
     session_started = st.session_state.get("interview_session_started", False)
@@ -381,15 +334,6 @@ def render_interview_view(api_key: str) -> None:
     _render_session_tip(silence_secs)
     _render_meeting_room()
     _render_live_caption()
-    _finalize_watch_fragment()
-
-    # If End was confirmed while never connected, finalize immediately (skip WebRTC wait).
-    reason = _should_finalize_now()
-    if reason:
-        st.session_state.pop("_pending_finalize", None)
-        st.session_state["_do_finalize"] = reason
-        st.rerun()
-        return
 
     disconnect = bool(st.session_state.get("_disconnect_realtime"))
     session_id = int(st.session_state.get("realtime_session_id") or 1)
@@ -408,10 +352,10 @@ def render_interview_view(api_key: str) -> None:
         st.rerun()
         return
 
-    reason = _should_finalize_now()
-    if reason:
-        st.session_state.pop("_pending_finalize", None)
-        st.session_state["_do_finalize"] = reason
+    # Natural completion signaled by the bridge after the last interviewer turn.
+    if st.session_state.pop("_realtime_natural_complete", False):
+        st.session_state["_disconnect_realtime"] = True
+        _finalize_and_evaluate(api_key)
         st.rerun()
         return
 

@@ -122,7 +122,9 @@ def show_end_interview_confirmation(on_confirm: Callable[[], None]) -> None:
             st.rerun(scope="app")
     with yes_col:
         if st.button("Yes, end interview", type="primary", use_container_width=True):
+            # Score + mark complete here so the next app run opens results immediately.
             on_confirm()
+            st.rerun(scope="app")
 
 
 @st.dialog("Preparing your mock interview")

@@ -108,6 +108,8 @@ def main() -> None:
             show_end_interview_confirmation(
                 lambda: end_interview_and_show_results(api_key)
             )
+            # Dialog owns this run — avoid re-rendering the live room underneath.
+            return
         render_interview_view(api_key)
     else:
         show_queued_validation_error()
