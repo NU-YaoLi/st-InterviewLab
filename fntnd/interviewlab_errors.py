@@ -110,7 +110,7 @@ def show_queued_validation_error() -> None:
 
 
 @st.dialog("End this interview?")
-def show_end_interview_confirmation(on_confirm: Callable[[], None]) -> None:
+def show_end_interview_confirmation() -> None:
     """Centered confirmation before ending a mock interview early."""
     st.markdown(
         "Are you sure you want to end your mock interview now? "
@@ -122,8 +122,25 @@ def show_end_interview_confirmation(on_confirm: Callable[[], None]) -> None:
             st.rerun(scope="app")
     with yes_col:
         if st.button("Yes, end interview", type="primary", use_container_width=True):
-            # Score + mark complete here so the next app run opens results immediately.
-            on_confirm()
+            # Show wrap-up feedback on the next run, then finalize immediately.
+            st.session_state["_ending_interview"] = True
+            st.rerun(scope="app")
+
+
+@st.dialog("Wrapping up your interview")
+def show_ending_interview_dialog(finalize_callback: Callable[[], None]) -> None:
+    """Centered modal while scoring and preparing feedback after End Interview."""
+    st.markdown("Scoring your answers and preparing your feedback.")
+    with st.spinner("Please wait…"):
+        if st.session_state.get("_ending_worker_started"):
+            finalize_callback()
+            st.session_state.pop("_ending_interview", None)
+            st.session_state.pop("_ending_worker_started", None)
+            if st.session_state.get("interview_complete"):
+                st.rerun(scope="app")
+        else:
+            # First pass paints the spinner; second pass runs finalize.
+            st.session_state["_ending_worker_started"] = True
             st.rerun(scope="app")
 
 

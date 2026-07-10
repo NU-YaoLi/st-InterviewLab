@@ -118,15 +118,34 @@ def _render_meeting_room() -> None:
     )
 
 
-def _render_live_caption() -> None:
-    """Show interviewer speech only — candidates already know what they said."""
-    if st.session_state.get("live_caption_speaker") == "you":
-        return
-    text = st.session_state.get("live_caption_text")
+def _sync_interviewer_caption_from_transcript() -> None:
+    """Keep sticky caption on the latest interviewer turn in the transcript."""
+    for msg in reversed(st.session_state.get("realtime_transcript") or []):
+        if msg.get("role") == "assistant" and (msg.get("content") or "").strip():
+            st.session_state["live_caption_text"] = msg["content"]
+            st.session_state["live_caption_speaker"] = "interviewer"
+            return
+
+
+def _interviewer_caption_text() -> str:
+    """Return the sticky interviewer caption, never the connecting placeholder."""
+    text = (st.session_state.get("live_caption_text") or "").strip()
+    if text.lower().startswith("connecting to your interviewer"):
+        _sync_interviewer_caption_from_transcript()
+        text = (st.session_state.get("live_caption_text") or "").strip()
+        if text.lower().startswith("connecting to your interviewer"):
+            return ""
+    return text
+
+
+def _render_live_caption_into(slot) -> None:
+    """Paint interviewer-only caption into a reserved layout slot."""
+    text = _interviewer_caption_text()
     if not text:
+        slot.empty()
         return
     safe_text = html.escape(str(text))
-    st.markdown(
+    slot.markdown(
         f"""
         <div class="live-caption-bar">
             <div class="live-caption-speaker">Interviewer</div>
@@ -139,7 +158,7 @@ def _render_live_caption() -> None:
 
 def _render_session_tip(silence_secs: int) -> None:
     st.markdown(
-        f'<p class="mic-active-hint">Live Realtime interview — speak naturally. '
+        f'<p class="mic-active-hint">Live Realtime interview — speak naturally.<br>'
         f"<strong>Tip:</strong> stay quiet for <strong>{silence_secs} seconds</strong> when you "
         "finish an answer to continue to the next question. "
         "Use <strong>End Interview</strong> when you want to stop the session.</p>",
@@ -162,6 +181,7 @@ def _maybe_note_non_english(transcript: list[dict[str, str]]) -> None:
 
 
 def _apply_realtime_payload(payload: object) -> None:
+    """Apply bridge payload into session state (caption + speaker + transcript)."""
     if not isinstance(payload, dict):
         return
     if payload == st.session_state.get("last_realtime_payload"):
@@ -179,6 +199,7 @@ def _apply_realtime_payload(payload: object) -> None:
                 for m in transcript
                 if isinstance(m, dict) and m.get("role") in ("assistant", "user")
             ]
+            _sync_interviewer_caption_from_transcript()
         return
 
     transcript = payload.get("transcript")
@@ -188,12 +209,7 @@ def _apply_realtime_payload(payload: object) -> None:
             for m in transcript
             if isinstance(m, dict) and m.get("role") in ("assistant", "user")
         ]
-        # Always keep the sticky caption on the latest interviewer turn.
-        for msg in reversed(st.session_state["realtime_transcript"]):
-            if msg.get("role") == "assistant" and (msg.get("content") or "").strip():
-                st.session_state["live_caption_text"] = msg["content"]
-                st.session_state["live_caption_speaker"] = "interviewer"
-                break
+        _sync_interviewer_caption_from_transcript()
         _maybe_note_non_english(st.session_state["realtime_transcript"])
 
     speaker = payload.get("active_speaker")
@@ -205,13 +221,14 @@ def _apply_realtime_payload(payload: object) -> None:
         st.session_state["interview_phase"] = "interviewer_speaking"
 
     caption = payload.get("caption") or {}
-    if (
-        isinstance(caption, dict)
-        and caption.get("text")
-        and caption.get("speaker") != "you"
-    ):
-        st.session_state["live_caption_text"] = caption.get("text")
-        st.session_state["live_caption_speaker"] = "interviewer"
+    if isinstance(caption, dict) and caption.get("speaker") != "you":
+        text = (caption.get("text") or "").strip()
+        # Ignore empty / connecting placeholders once we have a real question.
+        if text and not text.lower().startswith("connecting to your interviewer"):
+            st.session_state["live_caption_text"] = text
+            st.session_state["live_caption_speaker"] = "interviewer"
+        elif not text:
+            _sync_interviewer_caption_from_transcript()
 
     if event_type == "error":
         err = str(payload.get("error") or "realtime_error")
@@ -258,6 +275,8 @@ def _clear_finalize_flags() -> None:
         "_non_english_warned",
         "_realtime_connect_failed",
         "_show_end_interview_confirm",
+        "_ending_interview",
+        "_ending_worker_started",
     ):
         st.session_state.pop(key, None)
 
@@ -330,15 +349,15 @@ def render_interview_view(api_key: str) -> None:
         return
 
     silence_secs = max(1, int(round(REALTIME_SILENCE_DURATION_MS / 1000)))
-    _render_interview_header()
-    _render_session_tip(silence_secs)
-    _render_meeting_room()
-    _render_live_caption()
-
     disconnect = bool(st.session_state.get("_disconnect_realtime"))
     session_id = int(st.session_state.get("realtime_session_id") or 1)
 
-    # Compact audio bridge — status/captions live in the Python meeting UI above.
+    _render_interview_header()
+    _render_session_tip(silence_secs)
+    _render_meeting_room()
+    # Reserve caption position above the audio bridge, fill after payload apply.
+    caption_slot = st.empty()
+
     payload = render_realtime_interview(
         ephemeral_key=str(ephemeral),
         session_id=session_id,
@@ -347,6 +366,7 @@ def render_interview_view(api_key: str) -> None:
         key="realtime_live_session",
     )
     _apply_realtime_payload(payload)
+    _render_live_caption_into(caption_slot)
 
     if st.session_state.pop("_just_connected", False):
         st.rerun()

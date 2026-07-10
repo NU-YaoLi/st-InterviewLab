@@ -137,6 +137,8 @@
           handlersBound: false,
           startedResponse: false,
           connectAbort: null,
+          lastInterviewerCaption: "",
+          lastCaptionEmitAt: 0,
         };
       }
       return store[id];
@@ -148,6 +150,10 @@
     }
 
     function latestInterviewerCaption(s) {
+      // Prefer live partial interviewer speech, then sticky last completed question.
+      const live = (s.assistantBuffer || "").trim();
+      if (live) return live;
+      if (s.lastInterviewerCaption) return s.lastInterviewerCaption;
       const turns = s.transcript || [];
       for (let i = turns.length - 1; i >= 0; i--) {
         if (turns[i].role === "assistant" && turns[i].content) {
@@ -158,7 +164,6 @@
     }
 
     function emitToStreamlit(s, extra) {
-      // Only push completed-turn / lifecycle snapshots. Frequent emits remount this iframe.
       // Caption is interviewer-only — never the candidate's speech.
       const payload = Object.assign(
         {
@@ -179,12 +184,29 @@
       Streamlit.setComponentValue(payload);
     }
 
+    function emitInterviewerCaption(s, force) {
+      const text = latestInterviewerCaption(s);
+      if (!text) return;
+      const now = Date.now();
+      // Throttle partial caption emits so Streamlit can keep up without remount storms.
+      if (!force && now - (s.lastCaptionEmitAt || 0) < 450) return;
+      s.lastCaptionEmitAt = now;
+      s.activeSpeaker = "interviewer";
+      emitToStreamlit(s, {
+        type: "caption_update",
+        caption: { speaker: "interviewer", text: text },
+      });
+    }
+
     function pushTurn(s, role, content) {
       const text = (content || "").trim();
       if (!text) return;
       const last = s.transcript[s.transcript.length - 1];
       if (last && last.role === role && last.content === text) return;
       s.transcript.push({ role: role, content: text });
+      if (role === "assistant") {
+        s.lastInterviewerCaption = text;
+      }
       emitToStreamlit(s);
     }
 
@@ -239,11 +261,34 @@
         return;
       }
 
+      if (type === "response.created" || type === "response.output_item.added") {
+        s.activeSpeaker = "interviewer";
+        s.assistantBuffer = "";
+        setStatus("Interviewer speaking…", "speaking");
+        emitToStreamlit(s, {
+          type: "speaker_update",
+          active_speaker: "interviewer",
+          caption: {
+            speaker: "interviewer",
+            text: s.lastInterviewerCaption || "Interviewer is speaking…",
+          },
+        });
+        return;
+      }
+
       if (type === "input_audio_buffer.speech_started") {
         s.activeSpeaker = "you";
         s.userBuffer = "";
         setStatus("Listening…", "live");
-        // Speaker change only — avoid remount storms from partial captions.
+        // Keep sticky interviewer caption while the candidate speaks.
+        emitToStreamlit(s, {
+          type: "speaker_update",
+          active_speaker: "you",
+          caption: {
+            speaker: "interviewer",
+            text: s.lastInterviewerCaption || latestInterviewerCaption(s),
+          },
+        });
         return;
       }
 
@@ -278,6 +323,7 @@
         s.assistantBuffer += event.delta || "";
         s.activeSpeaker = "interviewer";
         setStatus("Interviewer speaking…", "speaking");
+        emitInterviewerCaption(s, false);
         return;
       }
 
@@ -285,8 +331,13 @@
         type === "response.output_audio_transcript.done" ||
         type === "response.audio_transcript.done"
       ) {
-        const text = event.transcript || s.assistantBuffer;
-        pushTurn(s, "assistant", text);
+        const text = (event.transcript || s.assistantBuffer || "").trim();
+        if (text) {
+          s.lastInterviewerCaption = text;
+          pushTurn(s, "assistant", text);
+        } else {
+          emitInterviewerCaption(s, true);
+        }
         s.assistantBuffer = "";
         s.activeSpeaker = "interviewer";
         setStatus("Your turn", "live");
@@ -295,12 +346,16 @@
 
       if (type === "response.done") {
         if (s.assistantBuffer.trim()) {
+          s.lastInterviewerCaption = s.assistantBuffer.trim();
           pushTurn(s, "assistant", s.assistantBuffer);
           s.assistantBuffer = "";
+        } else if (s.lastInterviewerCaption) {
+          // Ensure Python has the final sticky caption even if done already flushed.
+          emitInterviewerCaption(s, true);
         }
-        const last = s.transcript.length
-          ? s.transcript[s.transcript.length - 1].content
-          : "";
+        const last = s.lastInterviewerCaption || (
+          s.transcript.length ? s.transcript[s.transcript.length - 1].content : ""
+        );
         if (looksLikeInterviewEnd(last)) {
           emitToStreamlit(s, {
             type: "interview_complete",

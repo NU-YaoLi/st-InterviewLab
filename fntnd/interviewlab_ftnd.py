@@ -19,6 +19,7 @@ from fntnd.interviewlab_errors import (
     display_openai_error,
     queue_validation_error,
     show_end_interview_confirmation,
+    show_ending_interview_dialog,
     show_generating_dialog,
     show_queued_validation_error,
     SERVICE_UNAVAILABLE_MESSAGE,
@@ -116,10 +117,14 @@ def main() -> None:
             reset_runtime_session()
             st.rerun()
             return
-        if st.session_state.pop("_show_end_interview_confirm", False):
-            show_end_interview_confirmation(
+        if st.session_state.get("_ending_interview"):
+            show_ending_interview_dialog(
                 lambda: interview.end_interview_and_show_results(api_key)
             )
+            # Dialog owns this run — avoid re-rendering the live room underneath.
+            return
+        if st.session_state.pop("_show_end_interview_confirm", False):
+            show_end_interview_confirmation()
             # Dialog owns this run — avoid re-rendering the live room underneath.
             return
         interview.render_interview_view(api_key)
