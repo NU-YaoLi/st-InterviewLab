@@ -261,7 +261,7 @@
         return;
       }
 
-      if (type === "response.created" || type === "response.output_item.added") {
+      if (type === "response.created") {
         s.activeSpeaker = "interviewer";
         s.assistantBuffer = "";
         setStatus("Interviewer speaking…", "speaking");

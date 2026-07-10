@@ -255,6 +255,11 @@ def _apply_realtime_payload(payload: object) -> None:
     ):
         st.session_state.pop("_realtime_error", None)
         st.session_state.pop("_realtime_connect_failed", None)
+        # Drop the setup placeholder so the first real interviewer caption can show.
+        connecting = (st.session_state.get("live_caption_text") or "").strip().lower()
+        if connecting.startswith("connecting to your interviewer"):
+            st.session_state["live_caption_text"] = "Interviewer is speaking…"
+            st.session_state["live_caption_speaker"] = "interviewer"
         if st.session_state.get("interview_started_at") is None:
             state = state_from_session(st.session_state)
             start_interview_timer(state)
