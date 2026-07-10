@@ -49,8 +49,19 @@ _CONFIG_SNAPSHOT: dict[str, object] = {}
 _BOOTSTRAPPED = False
 
 
+def _attach_to_parent(name: str, mod: object) -> None:
+    """Expose SourceFileLoader modules as package attributes for dotted imports."""
+    if "." not in name:
+        return
+    parent_name, attr = name.rsplit(".", 1)
+    parent = sys.modules.get(parent_name)
+    if parent is not None:
+        setattr(parent, attr, mod)
+
+
 def _load_module(name: str, file_path: Path) -> None:
     if name in sys.modules:
+        _attach_to_parent(name, sys.modules[name])
         return
     path_str = str(file_path.resolve())
     if not file_path.is_file():
@@ -66,6 +77,7 @@ def _load_module(name: str, file_path: Path) -> None:
     except Exception:
         sys.modules.pop(name, None)
         raise
+    _attach_to_parent(name, mod)
 
 
 def _verify_config() -> None:
@@ -103,6 +115,7 @@ def _reinforce_config() -> None:
 
 def _load_package(name: str, init_path: Path) -> None:
     if name in sys.modules:
+        _attach_to_parent(name, sys.modules[name])
         return
     if not init_path.is_file():
         raise ImportError(f"Required package init missing: {init_path}")
@@ -124,6 +137,7 @@ def _load_package(name: str, init_path: Path) -> None:
     except Exception:
         sys.modules.pop(name, None)
         raise
+    _attach_to_parent(name, mod)
 
 
 def _bootstrap() -> None:

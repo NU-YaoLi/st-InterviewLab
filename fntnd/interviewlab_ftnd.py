@@ -2,9 +2,14 @@
 Top-level Streamlit UI for InterviewLab.
 
 Modern main-page flow: setup → live Realtime interview → evaluation dashboard.
+
+View modules are imported lazily inside ``main()`` so Streamlit Cloud's
+SourceFileLoader bootstrap does not fail on dotted package imports at module load.
 """
 
 from __future__ import annotations
+
+import sys
 
 import streamlit as st
 
@@ -27,12 +32,14 @@ from fntnd.interviewlab_state import (
 )
 from fntnd.interviewlab_styles import inject_styles
 from fntnd.interviewlab_transcript import render_chat_history
-from fntnd.views.interviewlab_evaluation_view import render_evaluation_view
-from fntnd.views.interviewlab_interview_view import (
-    end_interview_and_show_results,
-    render_interview_view,
-)
-from fntnd.views.interviewlab_landing_view import render_setup_view
+
+
+def _mod(name: str):
+    """Return a bootstrapped module from sys.modules (Cloud-safe)."""
+    mod = sys.modules.get(name)
+    if mod is None:
+        raise ImportError(f"Module not bootstrapped: {name}")
+    return mod
 
 
 def _abort_generating() -> None:
@@ -83,6 +90,11 @@ def main() -> None:
     init_session_state()
     inject_styles()
 
+    # Resolve views from sys.modules (set by interviewlab_main bootstrap).
+    landing = _mod("fntnd.views.interviewlab_landing_view")
+    interview = _mod("fntnd.views.interviewlab_interview_view")
+    evaluation = _mod("fntnd.views.interviewlab_evaluation_view")
+
     interview_active = st.session_state.get("interview_active", False)
     interview_complete = st.session_state.get("interview_complete", False)
 
@@ -93,7 +105,7 @@ def main() -> None:
         return
 
     if interview_complete:
-        render_evaluation_view()
+        evaluation.render_evaluation_view()
         st.divider()
         with st.expander("Full interview transcript"):
             render_chat_history()
@@ -106,14 +118,14 @@ def main() -> None:
             return
         if st.session_state.pop("_show_end_interview_confirm", False):
             show_end_interview_confirmation(
-                lambda: end_interview_and_show_results(api_key)
+                lambda: interview.end_interview_and_show_results(api_key)
             )
             # Dialog owns this run — avoid re-rendering the live room underneath.
             return
-        render_interview_view(api_key)
+        interview.render_interview_view(api_key)
     else:
         show_queued_validation_error()
-        render_setup_view()
+        landing.render_setup_view()
         render_setup_footer()
 
 
