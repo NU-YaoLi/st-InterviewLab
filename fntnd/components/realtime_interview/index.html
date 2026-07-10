@@ -136,6 +136,7 @@
           ephemeralKey: "",
           handlersBound: false,
           startedResponse: false,
+          connectAbort: null,
         };
       }
       return store[id];
@@ -376,6 +377,12 @@
         return;
       }
 
+      // Ending while a hung connect is in flight — do not start another attempt.
+      if (starting && existing && existing.disconnectRequested) {
+        sessionId = id;
+        return;
+      }
+
       if (starting) return;
       starting = true;
       sessionId = id;
@@ -383,6 +390,12 @@
       s.ephemeralKey = ephemeralKey;
       s.disconnectRequested = false;
       s.handlersBound = false;
+      if (s.connectAbort) {
+        try {
+          s.connectAbort.abort();
+        } catch (e) {}
+      }
+      s.connectAbort = typeof AbortController !== "undefined" ? new AbortController() : null;
       setStatus("Connecting microphone…", "");
 
       try {
@@ -393,6 +406,12 @@
         starting = false;
         setStatus("Microphone access required", "error");
         emitToStreamlit(s, { type: "error", error: "mic_denied" });
+        return;
+      }
+
+      if (s.disconnectRequested) {
+        starting = false;
+        await stopSession("end");
         return;
       }
 
@@ -423,14 +442,38 @@
         const offer = await s.pc.createOffer();
         await s.pc.setLocalDescription(offer);
 
-        const sdpResponse = await fetch("https://api.openai.com/v1/realtime/calls", {
+        if (s.disconnectRequested) {
+          starting = false;
+          await stopSession("end");
+          return;
+        }
+
+        const fetchOpts = {
           method: "POST",
           body: offer.sdp,
           headers: {
             Authorization: "Bearer " + ephemeralKey,
             "Content-Type": "application/sdp",
           },
-        });
+        };
+        if (s.connectAbort) fetchOpts.signal = s.connectAbort.signal;
+
+        // Bound wait so a blocked OpenAI route (e.g. no VPN) cannot hang End Interview.
+        const CONNECT_MS = 8000;
+        const sdpResponse = await Promise.race([
+          fetch("https://api.openai.com/v1/realtime/calls", fetchOpts),
+          new Promise(function (_, reject) {
+            setTimeout(function () {
+              reject(new Error("connect_timeout"));
+            }, CONNECT_MS);
+          }),
+        ]);
+
+        if (s.disconnectRequested) {
+          starting = false;
+          await stopSession("end");
+          return;
+        }
 
         if (!sdpResponse.ok) {
           const detail = await sdpResponse.text();
@@ -447,23 +490,38 @@
 
         const answer = { type: "answer", sdp: await sdpResponse.text() };
         await s.pc.setRemoteDescription(answer);
+        if (s.disconnectRequested) {
+          starting = false;
+          await stopSession("end");
+          return;
+        }
         s.connected = true;
         setStatus("Live audio connected", "live");
       } catch (err) {
+        if (s.disconnectRequested) {
+          starting = false;
+          await stopSession("end");
+          return;
+        }
+        const aborted =
+          (err && err.name === "AbortError") ||
+          String(err && err.message ? err.message : err) === "connect_timeout";
         setStatus("Could not start live session", "error");
         emitToStreamlit(s, {
           type: "error",
-          error: "connect_failed",
+          error: aborted ? "connect_timeout" : "connect_failed",
           detail: String(err && err.message ? err.message : err),
         });
         await cleanupSession(id);
       } finally {
         starting = false;
+        s.connectAbort = null;
       }
     }
 
     async function stopSession(reason) {
-      const s = session();
+      const id = sessionId || null;
+      const s = id != null ? store[id] || session() : session();
       if (!s) {
         Streamlit.setComponentValue({
           type: "disconnected",
@@ -475,11 +533,31 @@
         return;
       }
       s.disconnectRequested = true;
+      if (s.connectAbort) {
+        try {
+          s.connectAbort.abort();
+        } catch (e) {}
+      }
+      // Never connected / still connecting: ack immediately so Python can finalize.
+      if (!s.connected) {
+        const transcriptCopy = (s.transcript || []).slice();
+        await cleanupSession(id != null ? id : sessionId);
+        sessionId = null;
+        starting = false;
+        setStatus("Session ended", "");
+        Streamlit.setComponentValue({
+          type: "disconnected",
+          transcript: transcriptCopy,
+          active_speaker: "none",
+          caption: { speaker: "interviewer", text: "" },
+          connected: false,
+        });
+        return;
+      }
       if (s.assistantBuffer.trim()) pushTurn(s, "assistant", s.assistantBuffer);
       if (s.userBuffer.trim()) pushTurn(s, "user", s.userBuffer);
       const transcriptCopy = s.transcript.slice();
-      const id = sessionId;
-      await cleanupSession(id);
+      await cleanupSession(id != null ? id : sessionId);
       sessionId = null;
       setStatus("Session ended", "");
       Streamlit.setComponentValue({
