@@ -122,19 +122,30 @@ def _render_meeting_room() -> None:
 
 
 def _render_live_caption() -> None:
+    """Show interviewer speech only — candidates already know what they said."""
+    if st.session_state.get("live_caption_speaker") == "you":
+        return
     text = st.session_state.get("live_caption_text")
-    speaker = st.session_state.get("live_caption_speaker") or "interviewer"
     if not text:
         return
-    label = "Interviewer" if speaker == "interviewer" else "You"
     safe_text = html.escape(str(text))
     st.markdown(
         f"""
         <div class="live-caption-bar">
-            <div class="live-caption-speaker">{label}</div>
+            <div class="live-caption-speaker">Interviewer</div>
             <div class="live-caption-text">{safe_text}</div>
         </div>
         """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_session_tip(silence_secs: int) -> None:
+    st.markdown(
+        f'<p class="mic-active-hint">Live Realtime interview — speak naturally. '
+        f"<strong>Tip:</strong> stay quiet for <strong>{silence_secs} seconds</strong> when you "
+        "finish an answer to continue to the next question. "
+        "Use <strong>End Interview</strong> when you want to stop the session.</p>",
         unsafe_allow_html=True,
     )
 
@@ -180,8 +191,9 @@ def _apply_realtime_payload(payload: object) -> None:
             for m in transcript
             if isinstance(m, dict) and m.get("role") in ("assistant", "user")
         ]
+        # Always keep the sticky caption on the latest interviewer turn.
         for msg in reversed(st.session_state["realtime_transcript"]):
-            if msg.get("role") == "assistant" and msg.get("content"):
+            if msg.get("role") == "assistant" and (msg.get("content") or "").strip():
                 st.session_state["live_caption_text"] = msg["content"]
                 st.session_state["live_caption_speaker"] = "interviewer"
                 break
@@ -196,10 +208,13 @@ def _apply_realtime_payload(payload: object) -> None:
         st.session_state["interview_phase"] = "interviewer_speaking"
 
     caption = payload.get("caption") or {}
-    if isinstance(caption, dict) and caption.get("text"):
-        if caption.get("speaker") != "you":
-            st.session_state["live_caption_text"] = caption.get("text")
-            st.session_state["live_caption_speaker"] = "interviewer"
+    if (
+        isinstance(caption, dict)
+        and caption.get("text")
+        and caption.get("speaker") != "you"
+    ):
+        st.session_state["live_caption_text"] = caption.get("text")
+        st.session_state["live_caption_speaker"] = "interviewer"
 
     if event_type == "error":
         err = str(payload.get("error") or "realtime_error")
@@ -361,7 +376,9 @@ def render_interview_view(api_key: str) -> None:
             st.rerun()
         return
 
+    silence_secs = max(1, int(round(REALTIME_SILENCE_DURATION_MS / 1000)))
     _render_interview_header()
+    _render_session_tip(silence_secs)
     _render_meeting_room()
     _render_live_caption()
     _finalize_watch_fragment()
@@ -376,7 +393,6 @@ def render_interview_view(api_key: str) -> None:
 
     disconnect = bool(st.session_state.get("_disconnect_realtime"))
     session_id = int(st.session_state.get("realtime_session_id") or 1)
-    silence_secs = max(1, int(round(REALTIME_SILENCE_DURATION_MS / 1000)))
 
     # Compact audio bridge — status/captions live in the Python meeting UI above.
     payload = render_realtime_interview(
@@ -406,11 +422,3 @@ def render_interview_view(api_key: str) -> None:
     notice = st.session_state.get("_realtime_notice")
     if notice:
         st.warning(notice)
-
-    st.markdown(
-        f'<p class="mic-active-hint">Live Realtime interview — speak naturally. '
-        f"<strong>Tip:</strong> stay quiet for <strong>{silence_secs} seconds</strong> when you "
-        "finish an answer to continue to the next question. "
-        "Use <strong>End Interview</strong> when you want to stop the session.</p>",
-        unsafe_allow_html=True,
-    )

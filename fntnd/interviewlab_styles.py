@@ -314,7 +314,7 @@ div[data-testid="stHorizontalBlock"]:has(.interview-header-title) div[data-testi
     font-weight: 600;
     text-align: center;
     padding: 0.75rem 1rem;
-    margin: 0.5rem 0 1rem;
+    margin: 0 0 1rem;
     background: #eef2ff;
     border-radius: 12px;
     border: 1px solid #c7d2fe;
