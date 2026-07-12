@@ -90,14 +90,15 @@ def _timer_display_fragment() -> None:
     )
 
 
-def _render_meeting_room() -> None:
+def _render_meeting_room_into(slot) -> None:
+    """Paint participant tiles into a reserved layout slot (after payload apply)."""
     active = st.session_state.get("active_speaker")
     interviewer_cls = "participant-tile speaking" if active == "interviewer" else "participant-tile"
     you_cls = "participant-tile speaking" if active == "you" else "participant-tile"
     interviewer_status = "Speaking…" if active == "interviewer" else "Interviewer"
     you_status = "Speaking…" if active == "you" else "You"
 
-    st.markdown(
+    slot.markdown(
         f"""
         <div class="meeting-room">
             <div class="meeting-participants">
@@ -219,6 +220,9 @@ def _apply_realtime_payload(payload: object) -> None:
     elif speaker == "interviewer":
         st.session_state["active_speaker"] = "interviewer"
         st.session_state["interview_phase"] = "interviewer_speaking"
+    elif speaker == "none":
+        st.session_state["active_speaker"] = None
+        st.session_state["interview_phase"] = "waiting"
 
     caption = payload.get("caption") or {}
     if isinstance(caption, dict) and caption.get("speaker") != "you":
@@ -359,8 +363,8 @@ def render_interview_view(api_key: str) -> None:
 
     _render_interview_header()
     _render_session_tip(silence_secs)
-    _render_meeting_room()
-    # Reserve caption position above the audio bridge, fill after payload apply.
+    # Reserve layout slots, then fill after payload so speaking tiles stay in sync.
+    meeting_slot = st.empty()
     caption_slot = st.empty()
 
     payload = render_realtime_interview(
@@ -371,6 +375,7 @@ def render_interview_view(api_key: str) -> None:
         key="realtime_live_session",
     )
     _apply_realtime_payload(payload)
+    _render_meeting_room_into(meeting_slot)
     _render_live_caption_into(caption_slot)
 
     if st.session_state.pop("_just_connected", False):

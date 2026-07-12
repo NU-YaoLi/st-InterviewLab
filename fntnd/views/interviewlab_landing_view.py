@@ -169,6 +169,12 @@ def _setup_fields_fragment() -> None:
         "Paste notes or upload your resume — questions will be tailored to your experience and the job.",
     )
 
+    uploaded_resume = st.file_uploader(
+        "Upload resume (PDF, Word, or TXT)",
+        type=["pdf", "docx", "txt"],
+        help="Optional. We extract text from your resume to personalize interview questions.",
+    )
+
     typed_background = st.text_area(
         "Background notes",
         value=st.session_state.get("resume_typed", st.session_state.get("resume", "")),
@@ -177,12 +183,6 @@ def _setup_fields_fragment() -> None:
         label_visibility="collapsed",
     )
     st.session_state["resume_typed"] = typed_background
-
-    uploaded_resume = st.file_uploader(
-        "Upload resume (PDF, Word, or TXT)",
-        type=["pdf", "docx", "txt"],
-        help="Optional. We extract text from your resume to personalize interview questions.",
-    )
 
     _sync_resume_from_sources(typed_background, uploaded_resume)
 

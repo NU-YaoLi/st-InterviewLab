@@ -25,10 +25,19 @@ APP_TITLE = "AI Mock Interviewer"
 INTERVIEWLAB_MODEL = "gpt-5-mini"
 
 # Live mock interview — OpenAI Realtime voice agent (WebRTC).
-REALTIME_MODEL = "gpt-realtime-2.1"
+# The Realtime model speaks natively (no separate TTS model).
+REALTIME_MODEL = "gpt-realtime-2.1-mini"
 REALTIME_VOICE = "alloy"
+# Transcribes the candidate's mic audio into text for the transcript/eval bridge.
+# Interviewer captions come from Realtime output_audio_transcript events (same live session).
+REALTIME_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe"
 # Silence before the interviewer treats your answer as finished (server VAD).
 REALTIME_SILENCE_DURATION_MS = 5000
+# If True, any mic noise barges in and cuts off the interviewer mid-question.
+REALTIME_INTERRUPT_RESPONSE = False
+# Server VAD sensitivity (0–1). Higher = less likely to treat background noise as speech.
+REALTIME_VAD_THRESHOLD = 0.65
+REALTIME_VAD_PREFIX_PADDING_MS = 300
 
 # -------------------
 # Interview settings

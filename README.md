@@ -78,9 +78,11 @@ Edit `interviewlab_config.py`:
 | Setting | Default | Purpose |
 |---------|---------|---------|
 | `INTERVIEWLAB_MODEL` | `gpt-5-mini` | Post-interview evaluation |
-| `REALTIME_MODEL` | `gpt-realtime-2.1` | Live WebRTC interviewer |
+| `REALTIME_MODEL` | `gpt-realtime-2.1-mini` | Live WebRTC interviewer (speaks natively; no separate TTS) |
 | `REALTIME_VOICE` | `alloy` | Interviewer voice |
+| `REALTIME_TRANSCRIPTION_MODEL` | `gpt-4o-mini-transcribe` | Candidate mic → text transcript |
 | `REALTIME_SILENCE_DURATION_MS` | `5000` | Silence before next question |
+| `REALTIME_INTERRUPT_RESPONSE` | `False` | If True, mic noise cuts off the interviewer |
 | `DURATION_OPTIONS` | `15, 20, 30, 45` | Session length choices |
 | `MINUTES_PER_QUESTION` | `4` | Derives question count from duration |
 

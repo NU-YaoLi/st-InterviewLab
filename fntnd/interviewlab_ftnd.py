@@ -73,7 +73,7 @@ def _handle_start_interview(api_key: str) -> None:
         )
         st.session_state["realtime_transcript"] = []
         st.session_state["interview_phase"] = "connecting"
-        st.session_state["active_speaker"] = "interviewer"
+        st.session_state["active_speaker"] = None
         st.session_state["live_caption_text"] = "Connecting to your interviewer…"
         st.session_state["live_caption_speaker"] = "interviewer"
         st.session_state["_disconnect_realtime"] = False

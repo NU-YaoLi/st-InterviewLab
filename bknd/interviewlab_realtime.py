@@ -8,8 +8,12 @@ import httpx
 
 from bknd.interviewlab_engine import InterviewState, context_block, reset_interview_state
 from interviewlab_config import (
+    REALTIME_INTERRUPT_RESPONSE,
     REALTIME_MODEL,
     REALTIME_SILENCE_DURATION_MS,
+    REALTIME_TRANSCRIPTION_MODEL,
+    REALTIME_VAD_PREFIX_PADDING_MS,
+    REALTIME_VAD_THRESHOLD,
     REALTIME_VOICE,
     get_system_prompt,
     questions_for_duration,
@@ -32,6 +36,12 @@ def build_realtime_instructions(state: InterviewState) -> str:
         "- This is a spoken voice interview. Keep every turn short and natural.\n"
         "- Start immediately with one brief welcome sentence, then your first question.\n"
         "- Wait for the candidate to finish speaking before asking the next question.\n"
+        "- After each candidate answer, briefly acknowledge what they said in one short "
+        "natural phrase (e.g. \"Thanks, that helps.\" / \"Got it.\"), then either ask ONE "
+        "short follow-up when the answer is vague, or move to the next distinct question.\n"
+        "- Do not jump to the next question with zero acknowledgment — keep the conversation "
+        "interactive and human, like a real interviewer.\n"
+        "- Prefer one thoughtful follow-up over rushing through many shallow questions.\n"
         "- When the interview should end (final answer complete, or you are told time is up), "
         "thank the candidate and clearly say that the interview has concluded.\n"
         "- Prefer ending with the exact phrase: \"This interview has concluded.\"\n"
@@ -48,15 +58,15 @@ def build_realtime_session_config(state: InterviewState) -> dict[str, Any]:
             "instructions": build_realtime_instructions(state),
             "audio": {
                 "input": {
-                    "transcription": {"model": "gpt-4o-mini-transcribe"},
+                    "transcription": {"model": REALTIME_TRANSCRIPTION_MODEL},
                     "turn_detection": {
                         "type": "server_vad",
                         "create_response": True,
-                        "interrupt_response": True,
-                        # Wait before treating the candidate's turn as finished.
+                        # Keep False so coughs/noise do not cut off the interviewer mid-question.
+                        "interrupt_response": REALTIME_INTERRUPT_RESPONSE,
                         "silence_duration_ms": REALTIME_SILENCE_DURATION_MS,
-                        "prefix_padding_ms": 300,
-                        "threshold": 0.5,
+                        "prefix_padding_ms": REALTIME_VAD_PREFIX_PADDING_MS,
+                        "threshold": REALTIME_VAD_THRESHOLD,
                     },
                 },
                 "output": {

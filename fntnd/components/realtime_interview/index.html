@@ -293,7 +293,16 @@
       }
 
       if (type === "input_audio_buffer.speech_stopped") {
+        s.activeSpeaker = "none";
         setStatus("Interviewer thinking…", "speaking");
+        emitToStreamlit(s, {
+          type: "speaker_update",
+          active_speaker: "none",
+          caption: {
+            speaker: "interviewer",
+            text: s.lastInterviewerCaption || latestInterviewerCaption(s),
+          },
+        });
         return;
       }
 
@@ -332,14 +341,22 @@
         type === "response.audio_transcript.done"
       ) {
         const text = (event.transcript || s.assistantBuffer || "").trim();
+        s.assistantBuffer = "";
+        // Interviewer finished — clear speaking highlight until the candidate talks.
+        s.activeSpeaker = "none";
         if (text) {
           s.lastInterviewerCaption = text;
           pushTurn(s, "assistant", text);
         } else {
-          emitInterviewerCaption(s, true);
+          emitToStreamlit(s, {
+            type: "speaker_update",
+            active_speaker: "none",
+            caption: {
+              speaker: "interviewer",
+              text: s.lastInterviewerCaption || "",
+            },
+          });
         }
-        s.assistantBuffer = "";
-        s.activeSpeaker = "interviewer";
         setStatus("Your turn", "live");
         return;
       }
@@ -347,12 +364,23 @@
       if (type === "response.done") {
         if (s.assistantBuffer.trim()) {
           s.lastInterviewerCaption = s.assistantBuffer.trim();
-          pushTurn(s, "assistant", s.assistantBuffer);
           s.assistantBuffer = "";
-        } else if (s.lastInterviewerCaption) {
-          // Ensure Python has the final sticky caption even if done already flushed.
-          emitInterviewerCaption(s, true);
+          s.activeSpeaker = "none";
+          pushTurn(s, "assistant", s.lastInterviewerCaption);
+        } else {
+          s.activeSpeaker = "none";
+          if (s.lastInterviewerCaption) {
+            emitToStreamlit(s, {
+              type: "speaker_update",
+              active_speaker: "none",
+              caption: {
+                speaker: "interviewer",
+                text: s.lastInterviewerCaption,
+              },
+            });
+          }
         }
+        setStatus("Your turn", "live");
         const last = s.lastInterviewerCaption || (
           s.transcript.length ? s.transcript[s.transcript.length - 1].content : ""
         );
