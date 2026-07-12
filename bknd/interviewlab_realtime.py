@@ -65,7 +65,8 @@ def build_realtime_session_config(state: InterviewState) -> dict[str, Any]:
                     "turn_detection": {
                         "type": "server_vad",
                         "create_response": True,
-                        # Keep False so coughs/noise do not cut off the interviewer mid-question.
+                        # Defense-in-depth: client also mutes mic while interviewer speaks.
+                        # interrupt_response alone is not enough — mic audio still reaches VAD.
                         "interrupt_response": REALTIME_INTERRUPT_RESPONSE,
                         "silence_duration_ms": REALTIME_SILENCE_DURATION_MS,
                         "prefix_padding_ms": REALTIME_VAD_PREFIX_PADDING_MS,

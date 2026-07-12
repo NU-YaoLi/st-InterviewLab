@@ -35,6 +35,10 @@
       background: #6366f1;
       animation: pulse 0.9s infinite;
     }
+    .dot.muted {
+      background: #f59e0b;
+      animation: none;
+    }
     .dot.error { background: #ef4444; animation: none; }
     @keyframes pulse {
       0%, 100% { opacity: 1; transform: scale(1); }
@@ -147,6 +151,11 @@
           securityHandling: false,
           securityTerminating: false,
           securityTerminateTimer: null,
+          // Client-side barge-in gate: mute mic while interviewer audio is active.
+          micGated: true,
+          interviewerOutputActive: false,
+          remoteAudioPlaying: false,
+          ungateSafetyTimer: null,
         };
       }
       return store[id];
@@ -372,7 +381,82 @@
       }
     }
 
+    function applyMicTrackEnabled(s, enabled) {
+      if (s.localStream) {
+        s.localStream.getAudioTracks().forEach(function (track) {
+          track.enabled = enabled;
+        });
+      }
+      if (s.pc) {
+        s.pc.getSenders().forEach(function (sender) {
+          if (sender.track && sender.track.kind === "audio") {
+            sender.track.enabled = enabled;
+          }
+        });
+      }
+    }
+
+    /**
+     * Hard client-side barge-in gate. While the interviewer is speaking we disable
+     * the mic track (WebRTC sends silence) and clear any partial input buffer so
+     * server VAD cannot cut off interviewer audio — interrupt_response alone is not enough.
+     */
+    function setMicGated(s, gated) {
+      const next = !!gated;
+      const changed = s.micGated !== next;
+      s.micGated = next;
+      applyMicTrackEnabled(s, !next);
+      if (next && changed) {
+        // Drop any speech that landed just before the gate closed.
+        sendDc(s, { type: "input_audio_buffer.clear" });
+      }
+      if (next) {
+        setStatus("Wait for interviewer to finish…", "muted");
+      }
+    }
+
+    function clearUngateSafetyTimer(s) {
+      if (s.ungateSafetyTimer) {
+        try {
+          clearTimeout(s.ungateSafetyTimer);
+        } catch (e) {}
+        s.ungateSafetyTimer = null;
+      }
+    }
+
+    function beginInterviewerOutput(s) {
+      clearUngateSafetyTimer(s);
+      s.interviewerOutputActive = true;
+      setMicGated(s, true);
+    }
+
+    function endInterviewerOutput(s) {
+      clearUngateSafetyTimer(s);
+      s.interviewerOutputActive = false;
+      s.remoteAudioPlaying = false;
+      if (s.securityTerminating || s.disconnectRequested) {
+        setMicGated(s, true);
+        return;
+      }
+      setMicGated(s, false);
+      setStatus("Your turn", "live");
+    }
+
+    function scheduleUngateSafety(s) {
+      clearUngateSafetyTimer(s);
+      // If output_audio_buffer.stopped never arrives, do not leave the mic muted forever.
+      s.ungateSafetyTimer = setTimeout(function () {
+        s.ungateSafetyTimer = null;
+        if (s.disconnectRequested || s.securityTerminating) return;
+        if (s.micGated || s.interviewerOutputActive || s.remoteAudioPlaying) {
+          endInterviewerOutput(s);
+        }
+      }, 6000);
+    }
+
     function cancelAndRespond(s, instructions) {
+      // Keep mic gated across cancel → redirect/termination speech.
+      beginInterviewerOutput(s);
       sendDc(s, { type: "response.cancel" });
       sendDc(s, {
         type: "response.create",
@@ -456,7 +540,9 @@
 
     function onChannelOpen(s) {
       s.connected = true;
-      setStatus("Live audio connected", "live");
+      // Stay gated until the first interviewer utterance finishes playing.
+      beginInterviewerOutput(s);
+      setStatus("Wait for interviewer to finish…", "muted");
       if (!s.startedResponse) {
         s.startedResponse = true;
         try {
@@ -470,12 +556,16 @@
       const type = event.type || "";
 
       if (type === "session.created" || type === "session.updated") {
-        setStatus("Live audio connected", "live");
+        setStatus(
+          s.micGated ? "Wait for interviewer to finish…" : "Live audio connected",
+          s.micGated ? "muted" : "live"
+        );
         s.activeSpeaker = "interviewer";
         return;
       }
 
       if (type === "response.created") {
+        beginInterviewerOutput(s);
         s.activeSpeaker = "interviewer";
         s.assistantBuffer = "";
         setStatus("Interviewer speaking…", "speaking");
@@ -490,7 +580,42 @@
         return;
       }
 
+      // WebRTC: server knows when remote audio starts/stops playing.
+      if (type === "output_audio_buffer.started") {
+        s.remoteAudioPlaying = true;
+        beginInterviewerOutput(s);
+        s.activeSpeaker = "interviewer";
+        setStatus("Interviewer speaking…", "speaking");
+        return;
+      }
+
+      if (type === "output_audio_buffer.stopped") {
+        // Prefer this over response.done — audio may still be playing after generation ends.
+        endInterviewerOutput(s);
+        s.activeSpeaker = "none";
+        emitToStreamlit(s, {
+          type: "speaker_update",
+          active_speaker: "none",
+          caption: {
+            speaker: "interviewer",
+            text: s.lastInterviewerCaption || latestInterviewerCaption(s),
+          },
+        });
+        return;
+      }
+
+      if (type === "output_audio_buffer.cleared") {
+        // Playback aborted (e.g. cancel). Stay gated until a new response or explicit end.
+        s.remoteAudioPlaying = false;
+        return;
+      }
+
       if (type === "input_audio_buffer.speech_started") {
+        // While interviewer audio is gated, ignore stray VAD (should be silence anyway).
+        if (s.micGated || s.interviewerOutputActive) {
+          sendDc(s, { type: "input_audio_buffer.clear" });
+          return;
+        }
         s.activeSpeaker = "you";
         s.userBuffer = "";
         setStatus("Listening…", "live");
@@ -507,6 +632,9 @@
       }
 
       if (type === "input_audio_buffer.speech_stopped") {
+        if (s.micGated || s.interviewerOutputActive) {
+          return;
+        }
         s.activeSpeaker = "none";
         setStatus("Interviewer thinking…", "speaking");
         emitToStreamlit(s, {
@@ -524,6 +652,9 @@
         type === "conversation.item.input_audio_transcription.delta" ||
         type === "conversation.item.input_audio_transcription.delta.v2"
       ) {
+        if (s.micGated || s.interviewerOutputActive) {
+          return;
+        }
         s.userBuffer += event.delta || "";
         s.activeSpeaker = "you";
         return;
@@ -536,6 +667,10 @@
         const text = event.transcript || s.userBuffer;
         s.userBuffer = "";
         if (s.securityTerminating || s.disconnectRequested) {
+          return;
+        }
+        // Discard transcriptions captured while mic should have been gated.
+        if (s.micGated || s.interviewerOutputActive) {
           return;
         }
         const verdict = analyzeCandidateUtterance(text);
@@ -552,6 +687,7 @@
         type === "response.output_audio_transcript.delta" ||
         type === "response.audio_transcript.delta"
       ) {
+        beginInterviewerOutput(s);
         s.assistantBuffer += event.delta || "";
         s.activeSpeaker = "interviewer";
         setStatus("Interviewer speaking…", "speaking");
@@ -565,7 +701,7 @@
       ) {
         const text = (event.transcript || s.assistantBuffer || "").trim();
         s.assistantBuffer = "";
-        // Interviewer finished — clear speaking highlight until the candidate talks.
+        // Interviewer finished generating transcript — keep mic gated until audio drains.
         s.activeSpeaker = "none";
         if (text) {
           s.lastInterviewerCaption = text;
@@ -580,7 +716,11 @@
             },
           });
         }
-        setStatus("Your turn", "live");
+        if (s.remoteAudioPlaying || s.interviewerOutputActive) {
+          setStatus("Wait for interviewer to finish…", "muted");
+        } else {
+          endInterviewerOutput(s);
+        }
         return;
       }
 
@@ -603,7 +743,13 @@
             });
           }
         }
-        setStatus("Your turn", "live");
+        // Fallback ungate when buffer.stopped is missing (no audio / older events).
+        if (!s.remoteAudioPlaying) {
+          endInterviewerOutput(s);
+        } else {
+          setStatus("Wait for interviewer to finish…", "muted");
+          scheduleUngateSafety(s);
+        }
         if (s.securityTerminating) {
           if (s.securityTerminateTimer) {
             try {
@@ -671,13 +817,18 @@
     function reattachUi(s) {
       s.handlersBound = false;
       if (s.dc) bindDataChannel(s);
+      // Re-apply mic gate after remount — track.enabled can reset oddly across remounts.
+      applyMicTrackEnabled(s, !s.micGated);
       if (s.connected) {
-        setStatus(
-          s.activeSpeaker === "you"
-            ? "Listening…"
-            : "Live audio connected",
-          s.activeSpeaker === "interviewer" && s.assistantBuffer ? "speaking" : "live"
-        );
+        if (s.micGated || s.interviewerOutputActive) {
+          setStatus("Wait for interviewer to finish…", "muted");
+        } else if (s.activeSpeaker === "you") {
+          setStatus("Listening…", "live");
+        } else if (s.activeSpeaker === "interviewer" && s.assistantBuffer) {
+          setStatus("Interviewer speaking…", "speaking");
+        } else {
+          setStatus("Your turn", "live");
+        }
       }
       // Do NOT emit to Streamlit on reattach — that remounts this iframe again.
     }
@@ -726,6 +877,11 @@
         if (!s.localStream) {
           s.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         }
+        // Gate immediately so the candidate cannot barge into the greeting.
+        s.micGated = true;
+        s.interviewerOutputActive = true;
+        applyMicTrackEnabled(s, false);
+        setStatus("Wait for interviewer to finish…", "muted");
       } catch (err) {
         starting = false;
         setStatus("Microphone access required", "error");
@@ -863,6 +1019,7 @@
         } catch (e) {}
         s.securityTerminateTimer = null;
       }
+      clearUngateSafetyTimer(s);
       if (s.connectAbort) {
         try {
           s.connectAbort.abort();

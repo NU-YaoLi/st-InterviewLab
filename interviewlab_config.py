@@ -34,6 +34,8 @@ REALTIME_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe"
 # Silence before the interviewer treats your answer as finished (server VAD).
 REALTIME_SILENCE_DURATION_MS = 5000
 # If True, any mic noise barges in and cuts off the interviewer mid-question.
+# Defense-in-depth only — the WebRTC client also mutes the mic while interviewer
+# audio is playing (see fntnd/components/realtime_interview/index.html).
 REALTIME_INTERRUPT_RESPONSE = False
 # Server VAD sensitivity (0–1). Higher = less likely to treat background noise as speech.
 REALTIME_VAD_THRESHOLD = 0.65
