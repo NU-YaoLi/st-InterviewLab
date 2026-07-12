@@ -15,7 +15,7 @@ from typing import Any
 # Application metadata
 # -------------------
 
-APP_TITLE = "AI Mock Interviewer"
+APP_TITLE = "InterviewLab"
 
 # -------------------
 # Model configuration
@@ -63,10 +63,10 @@ TOTAL_QUESTIONS = 5
 
 # Interview duration options (minutes).
 DURATION_OPTIONS = (15, 20, 30, 45)
-DEFAULT_DURATION_MINUTES = 20
+DEFAULT_DURATION_MINUTES = 15
 
 # Approximate minutes per main question — used to derive question count from duration.
-MINUTES_PER_QUESTION = 4
+MINUTES_PER_QUESTION = 3
 
 INTERVIEW_MODES = ("Behavioral", "Technical")
 

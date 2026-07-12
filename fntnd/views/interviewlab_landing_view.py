@@ -110,7 +110,6 @@ def _render_hero() -> None:
     st.markdown(
         """
         <div class="hero-section">
-            <div class="hero-badge">AI-Powered Practice</div>
             <h1 class="hero-title">Mock Interview Lab</h1>
             <div class="hero-subtitle-wrap">
                 <p class="hero-subtitle">
