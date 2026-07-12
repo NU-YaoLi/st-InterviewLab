@@ -51,7 +51,8 @@ def _timer_class(remaining_seconds: float) -> str:
 def _render_interview_header() -> None:
     mode = st.session_state.get("interview_mode", "Behavioral")
     role = get_job_display_label(st.session_state)
-    connected = bool(st.session_state.get("interview_started_at"))
+    # Timer starts only after the WebRTC bridge emits connected — keep header in sync.
+    connected = st.session_state.get("interview_started_at") is not None
     status = "Live · English voice" if connected else "Connecting…"
 
     title_col, timer_col, end_col = st.columns([5.2, 2.2, 1.8], vertical_alignment="center")

@@ -151,11 +151,12 @@
           securityHandling: false,
           securityTerminating: false,
           securityTerminateTimer: null,
-          // Client-side barge-in gate: mute mic while interviewer audio is active.
-          micGated: true,
+          // Client-side barge-in gate: mute mic only while interviewer audio is active.
+          micGated: false,
           interviewerOutputActive: false,
           remoteAudioPlaying: false,
           ungateSafetyTimer: null,
+          awaitingFirstGreeting: false,
         };
       }
       return store[id];
@@ -400,18 +401,16 @@
      * Hard client-side barge-in gate. While the interviewer is speaking we disable
      * the mic track (WebRTC sends silence) and clear any partial input buffer so
      * server VAD cannot cut off interviewer audio — interrupt_response alone is not enough.
+     * Callers own status text — never show "Wait for interviewer" before Connected.
      */
     function setMicGated(s, gated) {
       const next = !!gated;
       const changed = s.micGated !== next;
       s.micGated = next;
       applyMicTrackEnabled(s, !next);
-      if (next && changed) {
+      if (next && changed && s.connected) {
         // Drop any speech that landed just before the gate closed.
         sendDc(s, { type: "input_audio_buffer.clear" });
-      }
-      if (next) {
-        setStatus("Wait for interviewer to finish…", "muted");
       }
     }
 
@@ -426,12 +425,14 @@
 
     function beginInterviewerOutput(s) {
       clearUngateSafetyTimer(s);
+      s.awaitingFirstGreeting = false;
       s.interviewerOutputActive = true;
       setMicGated(s, true);
     }
 
     function endInterviewerOutput(s) {
       clearUngateSafetyTimer(s);
+      s.awaitingFirstGreeting = false;
       s.interviewerOutputActive = false;
       s.remoteAudioPlaying = false;
       if (s.securityTerminating || s.disconnectRequested) {
@@ -439,19 +440,31 @@
         return;
       }
       setMicGated(s, false);
-      setStatus("Your turn", "live");
+      if (s.connected) {
+        setStatus("Your turn", "live");
+      }
     }
 
-    function scheduleUngateSafety(s) {
+    function scheduleUngateSafety(s, ms) {
       clearUngateSafetyTimer(s);
-      // If output_audio_buffer.stopped never arrives, do not leave the mic muted forever.
+      // If output never starts/stops, do not leave the mic muted forever.
+      const delay = typeof ms === "number" ? ms : 6000;
       s.ungateSafetyTimer = setTimeout(function () {
         s.ungateSafetyTimer = null;
         if (s.disconnectRequested || s.securityTerminating) return;
-        if (s.micGated || s.interviewerOutputActive || s.remoteAudioPlaying) {
+        if (s.micGated || s.interviewerOutputActive || s.remoteAudioPlaying || s.awaitingFirstGreeting) {
           endInterviewerOutput(s);
         }
-      }, 6000);
+      }, delay);
+    }
+
+    /** Soft pre-arm: mute mic for the greeting without claiming interviewer is already speaking. */
+    function prearmMicForGreeting(s) {
+      s.awaitingFirstGreeting = true;
+      s.micGated = true;
+      applyMicTrackEnabled(s, false);
+      // Safety: if response.create produces no audio/events, ungate so the session is usable.
+      scheduleUngateSafety(s, 8000);
     }
 
     function cancelAndRespond(s, instructions) {
@@ -520,35 +533,54 @@
     }
 
     function bindDataChannel(s) {
-      if (!s.dc || s.handlersBound) return;
-      s.handlersBound = true;
+      if (!s.dc) return;
 
-      s.dc.addEventListener("message", function (e) {
+      // Remounts must rebind so handlers close over the new iframe DOM, but avoid
+      // stacking duplicate listeners on the persistent parent-store DataChannel.
+      if (s._dcMessageHandler) {
+        try {
+          s.dc.removeEventListener("message", s._dcMessageHandler);
+        } catch (e) {}
+      }
+      if (s._dcOpenHandler) {
+        try {
+          s.dc.removeEventListener("open", s._dcOpenHandler);
+        } catch (e) {}
+      }
+
+      s._dcMessageHandler = function (e) {
         try {
           handleServerEvent(s, JSON.parse(e.data));
         } catch (err) {}
-      });
+      };
+      s.dc.addEventListener("message", s._dcMessageHandler);
 
+      s.handlersBound = true;
       if (s.dc.readyState === "open") {
         onChannelOpen(s);
       } else {
-        s.dc.addEventListener("open", function () {
+        s._dcOpenHandler = function () {
           onChannelOpen(s);
-        });
+        };
+        s.dc.addEventListener("open", s._dcOpenHandler);
       }
     }
 
     function onChannelOpen(s) {
       s.connected = true;
-      // Stay gated until the first interviewer utterance finishes playing.
-      beginInterviewerOutput(s);
-      setStatus("Wait for interviewer to finish…", "muted");
       if (!s.startedResponse) {
         s.startedResponse = true;
+        // Soft pre-arm + create first — emit remounts the iframe and must not run first
+        // or response.create never fires (dead loop: Connecting + Wait forever).
+        prearmMicForGreeting(s);
         try {
           s.dc.send(JSON.stringify({ type: "response.create" }));
         } catch (e) {}
+        setStatus("Live audio connected", "live");
         emitToStreamlit(s, { status: "connected" });
+      } else {
+        // Reattach after remount — refresh track enabled state, do not re-create response.
+        applyMicTrackEnabled(s, !s.micGated);
       }
     }
 
@@ -556,10 +588,21 @@
       const type = event.type || "";
 
       if (type === "session.created" || type === "session.updated") {
-        setStatus(
-          s.micGated ? "Wait for interviewer to finish…" : "Live audio connected",
-          s.micGated ? "muted" : "live"
-        );
+        if (!s.connected) return;
+        if (s.interviewerOutputActive || s.remoteAudioPlaying) {
+          setStatus(
+            s.remoteAudioPlaying || s.assistantBuffer
+              ? "Interviewer speaking…"
+              : "Wait for interviewer to finish…",
+            s.remoteAudioPlaying || s.assistantBuffer ? "speaking" : "muted"
+          );
+        } else if (s.awaitingFirstGreeting) {
+          setStatus("Live audio connected", "live");
+        } else if (s.micGated) {
+          setStatus("Wait for interviewer to finish…", "muted");
+        } else {
+          setStatus("Live audio connected", "live");
+        }
         s.activeSpeaker = "interviewer";
         return;
       }
@@ -716,8 +759,12 @@
             },
           });
         }
-        if (s.remoteAudioPlaying || s.interviewerOutputActive) {
+        if (s.remoteAudioPlaying) {
           setStatus("Wait for interviewer to finish…", "muted");
+        } else if (s.interviewerOutputActive) {
+          // Transcript finished but audio may still drain — keep gated briefly.
+          setStatus("Wait for interviewer to finish…", "muted");
+          scheduleUngateSafety(s, 4000);
         } else {
           endInterviewerOutput(s);
         }
@@ -748,7 +795,7 @@
           endInterviewerOutput(s);
         } else {
           setStatus("Wait for interviewer to finish…", "muted");
-          scheduleUngateSafety(s);
+          scheduleUngateSafety(s, 6000);
         }
         if (s.securityTerminating) {
           if (s.securityTerminateTimer) {
@@ -815,20 +862,24 @@
     }
 
     function reattachUi(s) {
-      s.handlersBound = false;
+      // Rebind handlers to this iframe's closures (parent-store DataChannel survives remount).
       if (s.dc) bindDataChannel(s);
       // Re-apply mic gate after remount — track.enabled can reset oddly across remounts.
       applyMicTrackEnabled(s, !s.micGated);
       if (s.connected) {
-        if (s.micGated || s.interviewerOutputActive) {
+        if (s.remoteAudioPlaying || (s.interviewerOutputActive && s.assistantBuffer)) {
+          setStatus("Interviewer speaking…", "speaking");
+        } else if (s.awaitingFirstGreeting) {
+          setStatus("Live audio connected", "live");
+        } else if (s.micGated || s.interviewerOutputActive) {
           setStatus("Wait for interviewer to finish…", "muted");
         } else if (s.activeSpeaker === "you") {
           setStatus("Listening…", "live");
-        } else if (s.activeSpeaker === "interviewer" && s.assistantBuffer) {
-          setStatus("Interviewer speaking…", "speaking");
         } else {
           setStatus("Your turn", "live");
         }
+      } else {
+        setStatus("Connecting live audio…", "");
       }
       // Do NOT emit to Streamlit on reattach — that remounts this iframe again.
     }
@@ -877,11 +928,14 @@
         if (!s.localStream) {
           s.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         }
-        // Gate immediately so the candidate cannot barge into the greeting.
-        s.micGated = true;
-        s.interviewerOutputActive = true;
-        applyMicTrackEnabled(s, false);
-        setStatus("Wait for interviewer to finish…", "muted");
+        // Keep tracks enabled through WebRTC negotiation. Gating too early
+        // (disabled track + "Wait for interviewer") blocks Connected UI and can
+        // strand the session before the first greeting exists.
+        s.micGated = false;
+        s.interviewerOutputActive = false;
+        s.awaitingFirstGreeting = false;
+        applyMicTrackEnabled(s, true);
+        setStatus("Connecting live audio…", "");
       } catch (err) {
         starting = false;
         setStatus("Microphone access required", "error");
@@ -902,6 +956,16 @@
           } catch (e) {}
         }
         s.pc = new RTCPeerConnection();
+        s.handlersBound = false;
+        s.startedResponse = false;
+        s.connected = false;
+        s.micGated = false;
+        s.interviewerOutputActive = false;
+        s.remoteAudioPlaying = false;
+        s.awaitingFirstGreeting = false;
+        s._dcMessageHandler = null;
+        s._dcOpenHandler = null;
+        clearUngateSafetyTimer(s);
         if (!s.remoteAudio) {
           s.remoteAudio = document.createElement("audio");
           s.remoteAudio.autoplay = true;
@@ -976,8 +1040,10 @@
           return;
         }
         s.connected = true;
-        setStatus("Live audio connected", "live");
-      } catch (err) {
+        // Channel may already have opened and started the greeting — don't clobber its status.
+        if (!s.startedResponse && !s.interviewerOutputActive && !s.remoteAudioPlaying) {
+          setStatus("Live audio connected", "live");
+        }
         if (s.disconnectRequested) {
           starting = false;
           await stopSession("end");
