@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import httpx
 
 from bknd.interviewlab_engine import InterviewState, context_block, reset_interview_state
 from interviewlab_config import (
+    REALTIME_EPHEMERAL_MAX_TTL_SECONDS,
+    REALTIME_EPHEMERAL_MIN_TTL_SECONDS,
+    REALTIME_EPHEMERAL_TTL_BUFFER_SECONDS,
     REALTIME_INTERRUPT_RESPONSE,
     REALTIME_MODEL,
     REALTIME_SILENCE_DURATION_MS,
@@ -27,7 +31,7 @@ def build_realtime_instructions(state: InterviewState) -> str:
     total = questions_for_duration(state.interview_duration_minutes)
     duration = state.interview_duration_minutes
 
-    return (
+    text = (
         get_system_prompt(state.interview_mode)
         + "\n\n"
         + SECURITY_SYSTEM_RULES
@@ -49,10 +53,21 @@ def build_realtime_instructions(state: InterviewState) -> str:
         "interactive and human, like a real interviewer.\n"
         "- Prefer one thoughtful follow-up over rushing through many shallow questions.\n"
         "- When the interview should end (final answer complete, or you are told time is up), "
-        "thank the candidate and clearly say that the interview has concluded.\n"
-        "- Prefer ending with the exact phrase: \"This interview has concluded.\"\n"
+        "thank the candidate briefly, then end with the exact sentence: "
+        "\"This interview has concluded.\"\n"
+        "- Always include that exact closing sentence on your final turn so the session can finish.\n"
         "- Do not mention that you are an AI model or that this uses a realtime API.\n"
     )
+    if state.chat_history or state.responses:
+        # Mid-session reconnect: keep role continuity without a second welcome.
+        text += (
+            "\nMid-session reconnect:\n"
+            "- The candidate was already interviewing. Do NOT restart with a welcome.\n"
+            "- Briefly say you are back, then continue with the next interview question "
+            "(or re-ask the last unanswered question if unclear).\n"
+            "- Ask exactly ONE question, then wait.\n"
+        )
+    return text
 
 
 def build_realtime_session_config(state: InterviewState) -> dict[str, Any]:
@@ -86,13 +101,34 @@ def build_realtime_session_config(state: InterviewState) -> dict[str, Any]:
     }
 
 
-def create_realtime_client_secret(api_key: str, state: InterviewState) -> str:
-    """Mint a short-lived ephemeral key for browser WebRTC. Never expose the root key."""
+def ephemeral_ttl_seconds(duration_minutes: int) -> int:
+    """Client-secret lifetime long enough to connect/reconnect for this interview."""
+    needed = int(duration_minutes) * 60 + REALTIME_EPHEMERAL_TTL_BUFFER_SECONDS
+    return max(
+        REALTIME_EPHEMERAL_MIN_TTL_SECONDS,
+        min(REALTIME_EPHEMERAL_MAX_TTL_SECONDS, needed),
+    )
+
+
+def create_realtime_client_secret(
+    api_key: str,
+    state: InterviewState,
+) -> tuple[str, int | None]:
+    """
+    Mint an ephemeral key for browser WebRTC. Never expose the root key.
+
+    Returns ``(ephemeral_key, expires_at_unix)``. ``expires_at`` may be None if
+    the API omits it; callers should still refresh before reconnect attempts.
+    """
     key = (api_key or "").strip()
     if not key:
         raise ValueError("Interview service is not configured.")
 
-    payload = build_realtime_session_config(state)
+    ttl = ephemeral_ttl_seconds(state.interview_duration_minutes or 20)
+    payload: dict[str, Any] = {
+        "expires_after": {"anchor": "created_at", "seconds": ttl},
+        **build_realtime_session_config(state),
+    }
     with httpx.Client(timeout=30.0) as client:
         response = client.post(
             "https://api.openai.com/v1/realtime/client_secrets",
@@ -113,7 +149,28 @@ def create_realtime_client_secret(api_key: str, state: InterviewState) -> str:
     ephemeral = data.get("value") or data.get("client_secret", {}).get("value")
     if not ephemeral:
         raise RuntimeError("Realtime client secret response missing value.")
-    return str(ephemeral)
+
+    expires_at = data.get("expires_at")
+    if expires_at is None:
+        nested = data.get("client_secret")
+        if isinstance(nested, dict):
+            expires_at = nested.get("expires_at")
+    try:
+        expires_unix = int(expires_at) if expires_at is not None else int(time.time()) + ttl
+    except (TypeError, ValueError):
+        expires_unix = int(time.time()) + ttl
+
+    return str(ephemeral), expires_unix
+
+
+def ephemeral_key_is_fresh(expires_at: int | None, *, skew_seconds: int = 60) -> bool:
+    """True when the client secret should still accept a new WebRTC connect."""
+    if expires_at is None:
+        return False
+    try:
+        return int(expires_at) > int(time.time()) + skew_seconds
+    except (TypeError, ValueError):
+        return False
 
 
 def prepare_realtime_interview(state: InterviewState) -> None:

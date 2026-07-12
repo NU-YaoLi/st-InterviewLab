@@ -2,7 +2,9 @@
 Voice / transcript defenses against prompt injection, jailbreaks, and data leakage.
 
 Used by:
-- Realtime live bridge (mirrored heuristics in JS for immediate intervention)
+- Realtime live bridge (mirrored heuristics in JS for immediate intervention —
+  keep ``fntnd/components/realtime_interview/index.html`` analyzeCandidateUtterance
+  aligned with ``analyze_candidate_utterance`` below)
 - Python session handling and evaluation (authoritative strike policy + filtering)
 
 Design notes:

@@ -40,6 +40,12 @@ REALTIME_INTERRUPT_RESPONSE = False
 # Server VAD sensitivity (0–1). Higher = less likely to treat background noise as speech.
 REALTIME_VAD_THRESHOLD = 0.65
 REALTIME_VAD_PREFIX_PADDING_MS = 300
+# Ephemeral client-secret TTL for WebRTC connect/reconnect (10s–7200s API limit).
+# Session audio may continue after expiry once connected; refresh before reconnect.
+REALTIME_EPHEMERAL_MIN_TTL_SECONDS = 600
+REALTIME_EPHEMERAL_MAX_TTL_SECONDS = 7200
+# Extra headroom beyond interview duration so End / brief reconnect still works.
+REALTIME_EPHEMERAL_TTL_BUFFER_SECONDS = 900
 
 # -------------------
 # Voice security / anti-prompt-hacking
@@ -99,6 +105,7 @@ SESSION_DEFAULTS: dict[str, Any] = {
     "active_speaker": None,
     "interview_phase": "connecting",
     "realtime_ephemeral_key": None,
+    "realtime_ephemeral_expires_at": None,
     "realtime_session_id": 0,
     "realtime_transcript": [],
     "last_realtime_payload": None,
@@ -107,6 +114,7 @@ SESSION_DEFAULTS: dict[str, Any] = {
     "_show_end_interview_confirm": False,
     "_generating_interview": False,
     "_generating_worker_started": False,
+    "_retry_realtime_connect": False,
     "security_consecutive_strikes": 0,
     "security_terminated": False,
     "_security_notice": None,

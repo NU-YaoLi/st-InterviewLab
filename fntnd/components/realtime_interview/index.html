@@ -220,7 +220,22 @@
       const text = (content || "").trim();
       if (!text) return;
       const last = s.transcript[s.transcript.length - 1];
-      if (last && last.role === role && last.content === text) return;
+      if (last && last.role === role) {
+        // Exact duplicate
+        if (last.content === text) return;
+        // Assistant partial → final (or remount echo): keep the longer version once.
+        if (role === "assistant") {
+          const prev = last.content || "";
+          if (text.startsWith(prev) || prev.startsWith(text)) {
+            if (text.length >= prev.length) {
+              last.content = text;
+              s.lastInterviewerCaption = text;
+              emitToStreamlit(s);
+            }
+            return;
+          }
+        }
+      }
       const turn = { role: role, content: text };
       if (flags && flags.security_blocked) {
         turn.security_blocked = true;
@@ -530,19 +545,68 @@
         }
         return;
       }
+      // Non-English script: keep the turn for transcript, but ask for English (no strike).
+      if (looksNonEnglish(cleaned)) {
+        pushTurn(s, "user", cleaned);
+        beginInterviewerOutput(s);
+        sendDc(s, {
+          type: "response.create",
+          response: {
+            instructions:
+              "LANGUAGE REMINDER. The candidate did not answer in English. " +
+              'Say briefly: "Please answer in English." Then repeat your last interview ' +
+              "question in one short sentence. Do not advance to a new question.",
+          },
+        });
+        emitToStreamlit(s, { type: "language_warning", transcript: s.transcript.slice() });
+        return;
+      }
       pushTurn(s, "user", cleaned);
       // One interviewer turn per candidate answer — never auto-fire on silence.
       sendDc(s, { type: "response.create" });
     }
 
     function looksLikeInterviewEnd(text) {
-      const lower = (text || "").toLowerCase();
-      return (
-        lower.includes("interview has concluded") ||
-        lower.includes("this interview has concluded") ||
-        lower.includes("that concludes our interview") ||
-        lower.includes("that concludes the interview") ||
-        lower.includes("thank you for your time") && lower.includes("concluded")
+      const lower = (text || "").toLowerCase().trim();
+      if (lower.length < 12) return false;
+      const exact = [
+        "this interview has concluded",
+        "the interview has concluded",
+        "that concludes our interview",
+        "that concludes the interview",
+        "that concludes this interview",
+        "this mock interview has concluded",
+        "the mock interview has concluded",
+      ];
+      for (let i = 0; i < exact.length; i++) {
+        if (lower.indexOf(exact[i]) >= 0) return true;
+      }
+      if (/\binterview\s+has\s+concluded\b/i.test(lower)) return true;
+      if (/\bthat\s+concludes\s+(our|the|this)\s+(mock\s+)?interview\b/i.test(lower)) return true;
+      if (/\b(wrap(?:s|ping)?\s+up|that\s+wraps\s+up)\s+(our|the|this)\s+(session|interview)\b/i.test(lower)) {
+        return true;
+      }
+      if (/\bend(s|ing)?\s+(our|the|this)\s+(mock\s+)?interview\b/i.test(lower)) return true;
+      const words = lower.split(/\s+/).length;
+      if (words <= 60) {
+        const thanks = lower.indexOf("thank you") >= 0 || lower.indexOf("thanks for your time") >= 0;
+        const closing =
+          lower.indexOf("goodbye") >= 0 ||
+          lower.indexOf("good bye") >= 0 ||
+          lower.indexOf("good luck") >= 0 ||
+          lower.indexOf("best of luck") >= 0 ||
+          lower.indexOf("that's all for today") >= 0 ||
+          lower.indexOf("that is all for today") >= 0 ||
+          lower.indexOf("concluded") >= 0;
+        if (thanks && closing) return true;
+      }
+      return false;
+    }
+
+    function looksNonEnglish(text) {
+      // Mirror bknd/interviewlab_language.py non-Latin script check (lightweight).
+      return /[\u0400-\u04FF\u0600-\u06FF\u0900-\u097F\u3040-\u30FF\u4E00-\u9FFF\uAC00-\uD7AF\u0E00-\u0E7F\u0370-\u03FF]/.test(
+        text || ""
       );
     }
 
@@ -996,6 +1060,24 @@
 
         s.dc = s.pc.createDataChannel("oai-events");
         bindDataChannel(s);
+
+        s.pc.onconnectionstatechange = function () {
+          const state = s.pc && s.pc.connectionState;
+          if (!state) return;
+          if (state === "failed" || state === "disconnected" || state === "closed") {
+            if (s.disconnectRequested || s.securityTerminating) return;
+            // Unexpected drop after we were live — tell Streamlit so recovery UI can show.
+            if (s.connected || s.startedResponse) {
+              setStatus("Connection lost", "error");
+              emitToStreamlit(s, {
+                type: "disconnected",
+                error: "peer_disconnected",
+                transcript: (s.transcript || []).slice(),
+                connected: false,
+              });
+            }
+          }
+        };
 
         const offer = await s.pc.createOffer();
         await s.pc.setLocalDescription(offer);

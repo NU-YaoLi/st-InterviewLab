@@ -13,9 +13,13 @@ from bknd.interviewlab_engine import (
     start_interview_timer,
 )
 from bknd.interviewlab_evaluator import run_evaluation
+from bknd.interviewlab_completion import looks_like_interview_end
 from bknd.interviewlab_language import NON_ENGLISH_UI_MESSAGE, is_english_text
 from bknd.interviewlab_openai import get_openai_client
-from bknd.interviewlab_realtime import finalize_realtime_interview, sync_transcript_to_state
+from bknd.interviewlab_realtime import (
+    finalize_realtime_interview,
+    sync_transcript_to_state,
+)
 from bknd.interviewlab_security import SECURITY_UI_TERMINATED, SECURITY_UI_WARNING
 from fntnd.interviewlab_errors import display_openai_error
 from fntnd.interviewlab_realtime_component import render_realtime_interview
@@ -193,11 +197,59 @@ def _maybe_note_non_english(transcript: list[dict[str, str]]) -> None:
     for msg in reversed(transcript):
         if msg.get("role") != "user":
             continue
+        if msg.get("security_blocked") or msg.get("security_flag"):
+            break
         content = (msg.get("content") or "").strip()
         if content and not is_english_text(content):
             st.session_state["_non_english_warned"] = True
             st.session_state["_realtime_notice"] = NON_ENGLISH_UI_MESSAGE
         break
+
+
+def _maybe_mark_natural_complete_from_transcript(transcript: list[dict]) -> None:
+    """Python-side auto-end when interviewer closing speech is detected."""
+    if st.session_state.get("_disconnect_realtime") or st.session_state.get("_ending_interview"):
+        return
+    if st.session_state.get("_realtime_natural_complete"):
+        return
+    for msg in reversed(transcript):
+        if msg.get("role") != "assistant":
+            continue
+        content = (msg.get("content") or "").strip()
+        if content and looks_like_interview_end(content):
+            st.session_state["_realtime_natural_complete"] = True
+        break
+
+
+def _refresh_ephemeral_for_reconnect(api_key: str) -> bool:
+    """
+    Mint a fresh ephemeral key and bump session_id so the WebRTC bridge reconnects.
+
+    Returns True on success. Preserves transcript / interview progress.
+    """
+    from fntnd.interviewlab_ftnd import mint_and_store_ephemeral_key
+
+    try:
+        state = state_from_session(st.session_state)
+        # Sync progress so reminted instructions can continue mid-interview.
+        transcript = list(st.session_state.get("realtime_transcript") or [])
+        sync_transcript_to_state(state, transcript)
+        apply_state_to_session(state, st.session_state)
+        # Always remint — reconnect needs a secret that can open a new WebRTC call.
+        mint_and_store_ephemeral_key(api_key, state)
+        st.session_state["_disconnect_realtime"] = False
+        st.session_state.pop("_realtime_error", None)
+        st.session_state.pop("_realtime_connect_failed", None)
+        st.session_state.pop("_realtime_disconnected", None)
+        st.session_state.pop("last_realtime_payload", None)
+        st.session_state["interview_phase"] = "connecting"
+        st.session_state["active_speaker"] = None
+        st.session_state["live_caption_text"] = "Reconnecting to your interviewer…"
+        st.session_state["live_caption_speaker"] = "interviewer"
+        return True
+    except Exception as exc:
+        display_openai_error(exc)
+        return False
 
 
 def _apply_realtime_payload(payload: object) -> None:
@@ -216,6 +268,9 @@ def _apply_realtime_payload(payload: object) -> None:
         if isinstance(transcript, list):
             st.session_state["realtime_transcript"] = _normalize_transcript_turns(transcript)
             _sync_interviewer_caption_from_transcript()
+            _maybe_mark_natural_complete_from_transcript(
+                st.session_state["realtime_transcript"]
+            )
         return
 
     transcript = payload.get("transcript")
@@ -223,11 +278,17 @@ def _apply_realtime_payload(payload: object) -> None:
         st.session_state["realtime_transcript"] = _normalize_transcript_turns(transcript)
         _sync_interviewer_caption_from_transcript()
         _maybe_note_non_english(st.session_state["realtime_transcript"])
+        _maybe_mark_natural_complete_from_transcript(st.session_state["realtime_transcript"])
 
     if event_type == "security_warning":
         strikes = int(payload.get("security_strikes") or 0)
         st.session_state["security_consecutive_strikes"] = strikes
         st.session_state["_security_notice"] = SECURITY_UI_WARNING
+        return
+
+    if event_type == "language_warning":
+        st.session_state["_non_english_warned"] = True
+        st.session_state["_realtime_notice"] = NON_ENGLISH_UI_MESSAGE
         return
 
     if event_type == "security_terminated":
@@ -261,6 +322,8 @@ def _apply_realtime_payload(payload: object) -> None:
         if text and not text.lower().startswith("connecting to your interviewer"):
             st.session_state["live_caption_text"] = text
             st.session_state["live_caption_speaker"] = "interviewer"
+            if looks_like_interview_end(text):
+                st.session_state["_realtime_natural_complete"] = True
         elif not text:
             _sync_interviewer_caption_from_transcript()
 
@@ -277,7 +340,8 @@ def _apply_realtime_payload(payload: object) -> None:
         st.session_state["_realtime_connect_failed"] = True
         if err == "mic_denied":
             st.session_state["_realtime_error"] = (
-                "Microphone access is required. Allow the mic in your browser and refresh."
+                "Microphone access is required. Allow the mic in your browser, then click "
+                "Retry connection."
             )
         elif err in (
             "sdp_failed",
@@ -287,30 +351,58 @@ def _apply_realtime_payload(payload: object) -> None:
         ):
             if already_live:
                 st.session_state["_realtime_error"] = (
-                    "Live interview connection lost. Click End Interview to save your progress."
+                    "Live interview connection lost. Click Retry connection to continue, "
+                    "or End Interview to save your progress."
                 )
+                st.session_state["_realtime_disconnected"] = True
             else:
                 st.session_state["_realtime_error"] = (
-                    "Live interview connection issue. Click End Interview, then start a new session."
+                    "Could not connect to the live interviewer. Click Retry connection, "
+                    "or End Interview to leave."
                 )
+        else:
+            st.session_state["_realtime_error"] = (
+                "Live interview hit a connection problem. Click Retry connection or End Interview."
+            )
     elif event_type == "interview_complete" and not st.session_state.get("_disconnect_realtime"):
         st.session_state["_realtime_natural_complete"] = True
     elif event_type == "disconnected":
-        st.session_state["_realtime_disconnected"] = True
+        # Intentional End / finalize — ignore.
+        if (
+            st.session_state.get("_disconnect_realtime")
+            or st.session_state.get("_ending_interview")
+            or st.session_state.get("interview_complete")
+            or st.session_state.get("_security_finalize")
+        ):
+            return
+        # Unexpected mid-session drop — surface recovery UI.
+        if st.session_state.get("interview_started_at") is not None:
+            st.session_state["_realtime_disconnected"] = True
+            st.session_state["_realtime_error"] = (
+                "Live interview connection dropped. Click Retry connection to continue, "
+                "or End Interview to save your progress."
+            )
     elif status == "connected" or (
         payload.get("connected") and st.session_state.get("interview_started_at") is None
     ):
         st.session_state.pop("_realtime_error", None)
         st.session_state.pop("_realtime_connect_failed", None)
+        st.session_state.pop("_realtime_disconnected", None)
         # Drop the setup placeholder so the first real interviewer caption can show.
         connecting = (st.session_state.get("live_caption_text") or "").strip().lower()
-        if connecting.startswith("connecting to your interviewer"):
+        if connecting.startswith("connecting to your interviewer") or connecting.startswith(
+            "reconnecting to your interviewer"
+        ):
             st.session_state["live_caption_text"] = "Interviewer is speaking…"
             st.session_state["live_caption_speaker"] = "interviewer"
         if st.session_state.get("interview_started_at") is None:
             state = state_from_session(st.session_state)
             start_interview_timer(state)
             apply_state_to_session(state, st.session_state)
+            st.session_state["interview_phase"] = "live"
+            st.session_state["_just_connected"] = True
+        else:
+            # Successful reconnect after a drop — keep original timer.
             st.session_state["interview_phase"] = "live"
             st.session_state["_just_connected"] = True
 
@@ -331,6 +423,7 @@ def _clear_finalize_flags() -> None:
         "_ending_worker_started",
         "_security_finalize",
         "_security_notice",
+        "_retry_realtime_connect",
     ):
         st.session_state.pop(key, None)
 
@@ -359,6 +452,7 @@ def _finalize_and_evaluate(api_key: str, *, closing_note: str | None = None) -> 
         )
         apply_state_to_session(state, st.session_state)
         st.session_state["realtime_ephemeral_key"] = None
+        st.session_state["realtime_ephemeral_expires_at"] = None
         st.session_state["_disconnect_realtime"] = True
         _clear_finalize_flags()
     except Exception as exc:
@@ -380,6 +474,27 @@ def _handle_time_expiry(api_key: str) -> None:
         api_key,
         closing_note="Time is up. Thank you — this mock interview has concluded.",
     )
+
+
+def _render_connection_recovery(api_key: str) -> None:
+    """Retry / End controls when connect fails or the live link drops."""
+    err = st.session_state.get("_realtime_error")
+    if err:
+        st.error(err)
+    disconnected = bool(st.session_state.get("_realtime_disconnected"))
+    failed = bool(st.session_state.get("_realtime_connect_failed"))
+    if not (disconnected or failed or err):
+        return
+
+    retry_col, end_col = st.columns(2)
+    with retry_col:
+        if st.button("Retry connection", type="primary", use_container_width=True):
+            if _refresh_ephemeral_for_reconnect(api_key):
+                st.rerun()
+    with end_col:
+        if st.button("End Interview", type="secondary", use_container_width=True, key="end_after_disconnect"):
+            st.session_state["_show_end_interview_confirm"] = True
+            st.rerun()
 
 
 def render_interview_view(api_key: str) -> None:
@@ -423,6 +538,15 @@ def render_interview_view(api_key: str) -> None:
     silence_secs = max(1, int(round(REALTIME_SILENCE_DURATION_MS / 1000)))
     disconnect = bool(st.session_state.get("_disconnect_realtime"))
     session_id = int(st.session_state.get("realtime_session_id") or 1)
+    # After a failed connect / unexpected drop, do not auto-restart WebRTC every rerun.
+    # Retry connection remints a key and clears these flags.
+    hold_connect = (
+        not disconnect
+        and (
+            st.session_state.get("_realtime_connect_failed")
+            or st.session_state.get("_realtime_disconnected")
+        )
+    )
 
     _render_interview_header()
     _render_session_tip(silence_secs)
@@ -431,7 +555,7 @@ def render_interview_view(api_key: str) -> None:
     caption_slot = st.empty()
 
     payload = render_realtime_interview(
-        ephemeral_key=str(ephemeral),
+        ephemeral_key="" if hold_connect else str(ephemeral),
         session_id=session_id,
         disconnect=disconnect,
         silence_seconds=silence_secs,
@@ -461,9 +585,7 @@ def render_interview_view(api_key: str) -> None:
         st.rerun()
         return
 
-    err = st.session_state.get("_realtime_error")
-    if err:
-        st.error(err)
+    _render_connection_recovery(api_key)
 
     security_notice = st.session_state.get("_security_notice")
     if security_notice:

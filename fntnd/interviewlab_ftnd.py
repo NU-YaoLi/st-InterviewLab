@@ -48,6 +48,16 @@ def _abort_generating() -> None:
     st.session_state.pop("_generating_worker_started", None)
 
 
+def mint_and_store_ephemeral_key(api_key: str, state) -> None:
+    """Mint a fresh Realtime client secret into session state (for start or reconnect)."""
+    ephemeral, expires_at = create_realtime_client_secret(api_key, state)
+    st.session_state["realtime_ephemeral_key"] = ephemeral
+    st.session_state["realtime_ephemeral_expires_at"] = expires_at
+    st.session_state["realtime_session_id"] = (
+        int(st.session_state.get("realtime_session_id") or 0) + 1
+    )
+
+
 def _handle_start_interview(api_key: str) -> None:
     if not api_key:
         _abort_generating()
@@ -63,14 +73,10 @@ def _handle_start_interview(api_key: str) -> None:
     try:
         state = state_from_session(st.session_state)
         prepare_realtime_interview(state)
-        ephemeral = create_realtime_client_secret(api_key, state)
         begin_live_session(state)
         apply_state_to_session(state, st.session_state)
+        mint_and_store_ephemeral_key(api_key, state)
 
-        st.session_state["realtime_ephemeral_key"] = ephemeral
-        st.session_state["realtime_session_id"] = (
-            int(st.session_state.get("realtime_session_id") or 0) + 1
-        )
         st.session_state["realtime_transcript"] = []
         st.session_state["interview_phase"] = "connecting"
         st.session_state["active_speaker"] = None
@@ -82,6 +88,9 @@ def _handle_start_interview(api_key: str) -> None:
         st.session_state.pop("_security_notice", None)
         st.session_state.pop("_security_finalize", None)
         st.session_state.pop("last_realtime_payload", None)
+        st.session_state.pop("_realtime_error", None)
+        st.session_state.pop("_realtime_connect_failed", None)
+        st.session_state.pop("_realtime_disconnected", None)
 
         st.session_state.pop("_generating_interview", None)
         st.session_state.pop("_generating_worker_started", None)
@@ -89,6 +98,8 @@ def _handle_start_interview(api_key: str) -> None:
     except Exception as exc:
         _abort_generating()
         display_openai_error(exc)
+        # Leave the generating dialog so the setup page can show the error.
+        st.rerun()
 
 
 def main() -> None:
