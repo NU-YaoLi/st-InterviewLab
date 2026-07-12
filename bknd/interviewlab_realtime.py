@@ -38,7 +38,10 @@ def build_realtime_instructions(state: InterviewState) -> str:
         f"- Aim for approximately {total} main questions, with brief follow-ups when needed.\n"
         "- This is a spoken voice interview. Keep every turn short and natural.\n"
         "- Start immediately with one brief welcome sentence, then your first question.\n"
-        "- Wait for the candidate to finish speaking before asking the next question.\n"
+        "- Ask exactly ONE interview question per speaking turn (welcome + first question is OK "
+        "on the opening turn only).\n"
+        "- After you ask a question, STOP and wait. Never ask a second interview question "
+        "until the candidate has clearly answered.\n"
         "- After each candidate answer, briefly acknowledge what they said in one short "
         "natural phrase (e.g. \"Thanks, that helps.\" / \"Got it.\"), then either ask ONE "
         "short follow-up when the answer is vague, or move to the next distinct question.\n"
@@ -64,7 +67,9 @@ def build_realtime_session_config(state: InterviewState) -> dict[str, Any]:
                     "transcription": {"model": REALTIME_TRANSCRIPTION_MODEL},
                     "turn_detection": {
                         "type": "server_vad",
-                        "create_response": True,
+                        # Manual response.create after a real user transcript prevents
+                        # empty/noise VAD turns from firing back-to-back interviewer questions.
+                        "create_response": False,
                         # Defense-in-depth: client also mutes mic while interviewer speaks.
                         # interrupt_response alone is not enough — mic audio still reaches VAD.
                         "interrupt_response": REALTIME_INTERRUPT_RESPONSE,

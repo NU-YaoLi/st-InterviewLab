@@ -463,6 +463,8 @@
       s.awaitingFirstGreeting = true;
       s.micGated = true;
       applyMicTrackEnabled(s, false);
+      // Drop any audio buffered while the mic was live during WebRTC setup.
+      sendDc(s, { type: "input_audio_buffer.clear" });
       // Safety: if response.create produces no audio/events, ungate so the session is usable.
       scheduleUngateSafety(s, 8000);
     }
@@ -518,7 +520,19 @@
 
     function handleCleanUserTurn(s, text) {
       s.securityStrikes = 0;
-      pushTurn(s, "user", text);
+      const cleaned = (text || "").trim();
+      // Empty / noise-only VAD commits must not advance the interviewer
+      // (create_response is false — we only respond after a real answer).
+      if (!cleaned) {
+        sendDc(s, { type: "input_audio_buffer.clear" });
+        if (s.connected && !s.micGated && !s.interviewerOutputActive) {
+          setStatus("Your turn", "live");
+        }
+        return;
+      }
+      pushTurn(s, "user", cleaned);
+      // One interviewer turn per candidate answer — never auto-fire on silence.
+      sendDc(s, { type: "response.create" });
     }
 
     function looksLikeInterviewEnd(text) {
@@ -718,7 +732,7 @@
         }
         const verdict = analyzeCandidateUtterance(text);
         if (verdict.is_attack) {
-          // Cancel auto-response (create_response: true) before model follows the attack.
+          // Cancel any in-flight response before the model follows the attack.
           handleSecurityAttack(s, text, verdict.categories);
           return;
         }
@@ -1020,6 +1034,11 @@
         }
 
         if (!sdpResponse.ok) {
+          if (s.disconnectRequested) {
+            starting = false;
+            await stopSession("end");
+            return;
+          }
           const detail = await sdpResponse.text();
           setStatus("Could not start live session", "error");
           emitToStreamlit(s, {
@@ -1044,6 +1063,10 @@
         if (!s.startedResponse && !s.interviewerOutputActive && !s.remoteAudioPlaying) {
           setStatus("Live audio connected", "live");
         }
+        // Success — keep WebRTC up. Greeting is started from onChannelOpen.
+        return;
+      } catch (err) {
+        // Intentional End Interview / abort during connect — never surface as start failure.
         if (s.disconnectRequested) {
           starting = false;
           await stopSession("end");
@@ -1175,6 +1198,7 @@
 
       if (disconnect) {
         if (sessionId == null && id) sessionId = id;
+        // Intentional stop — do not start/reconnect on this render.
         stopSession("end");
         return;
       }

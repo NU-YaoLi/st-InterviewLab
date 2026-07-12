@@ -123,7 +123,12 @@ def show_end_interview_confirmation() -> None:
     with yes_col:
         if st.button("Yes, end interview", type="primary", use_container_width=True):
             # Show wrap-up feedback on the next run, then finalize immediately.
+            # Mark disconnect now so any stray remount treats teardown as intentional
+            # (never as "Could not start live session").
             st.session_state["_ending_interview"] = True
+            st.session_state["_disconnect_realtime"] = True
+            st.session_state.pop("_realtime_error", None)
+            st.session_state.pop("_realtime_connect_failed", None)
             st.rerun(scope="app")
 
 

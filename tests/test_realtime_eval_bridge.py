@@ -7,6 +7,7 @@ import types
 import unittest
 from pathlib import Path
 
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -27,7 +28,11 @@ if "openai" not in sys.modules:
 
 from bknd.interviewlab_engine import InterviewState, begin_live_session, start_interview_timer
 from bknd.interviewlab_evaluator import evaluate_full_interview
-from bknd.interviewlab_realtime import sync_transcript_to_state
+from bknd.interviewlab_realtime import (
+    build_realtime_instructions,
+    build_realtime_session_config,
+    sync_transcript_to_state,
+)
 
 
 class TranscriptSyncTests(unittest.TestCase):
@@ -75,6 +80,18 @@ class TimerTests(unittest.TestCase):
         self.assertIsNone(state.interview_started_at)
         start_interview_timer(state)
         self.assertIsNotNone(state.interview_started_at)
+
+
+class RealtimeTurnTakingConfigTests(unittest.TestCase):
+    def test_create_response_disabled_for_manual_turn_taking(self) -> None:
+        cfg = build_realtime_session_config(InterviewState())
+        turn = cfg["session"]["audio"]["input"]["turn_detection"]
+        self.assertFalse(turn["create_response"])
+
+    def test_instructions_require_one_question_then_wait(self) -> None:
+        text = build_realtime_instructions(InterviewState())
+        self.assertIn("ONE interview question per speaking turn", text)
+        self.assertIn("Never ask a second interview question", text)
 
 
 if __name__ == "__main__":

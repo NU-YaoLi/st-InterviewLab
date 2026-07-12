@@ -265,7 +265,15 @@ def _apply_realtime_payload(payload: object) -> None:
             _sync_interviewer_caption_from_transcript()
 
     if event_type == "error":
+        # Intentional teardown / wrap-up — never surface as a cold-start failure.
+        if (
+            st.session_state.get("_disconnect_realtime")
+            or st.session_state.get("_ending_interview")
+            or st.session_state.get("interview_complete")
+        ):
+            return
         err = str(payload.get("error") or "realtime_error")
+        already_live = st.session_state.get("interview_started_at") is not None
         st.session_state["_realtime_connect_failed"] = True
         if err == "mic_denied":
             st.session_state["_realtime_error"] = (
@@ -277,9 +285,14 @@ def _apply_realtime_payload(payload: object) -> None:
             "connect_timeout",
             "missing_ephemeral_key",
         ):
-            st.session_state["_realtime_error"] = (
-                "Live interview connection issue. Click End Interview, then start a new session."
-            )
+            if already_live:
+                st.session_state["_realtime_error"] = (
+                    "Live interview connection lost. Click End Interview to save your progress."
+                )
+            else:
+                st.session_state["_realtime_error"] = (
+                    "Live interview connection issue. Click End Interview, then start a new session."
+                )
     elif event_type == "interview_complete" and not st.session_state.get("_disconnect_realtime"):
         st.session_state["_realtime_natural_complete"] = True
     elif event_type == "disconnected":
