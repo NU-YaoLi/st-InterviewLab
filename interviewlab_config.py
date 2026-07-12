@@ -66,7 +66,7 @@ DURATION_OPTIONS = (15, 20, 30, 45)
 DEFAULT_DURATION_MINUTES = 15
 
 # Approximate minutes per main question — used to derive question count from duration.
-MINUTES_PER_QUESTION = 3
+MINUTES_PER_QUESTION = 4
 
 INTERVIEW_MODES = ("Behavioral", "Technical")
 
