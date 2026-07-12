@@ -110,7 +110,7 @@ def _render_hero() -> None:
     st.markdown(
         """
         <div class="hero-section">
-            <h1 class="hero-title">Mock Interview Lab</h1>
+            <h1 class="hero-title">Interview Lab</h1>
             <div class="hero-subtitle-wrap">
                 <p class="hero-subtitle">
                     Prepare for your next opportunity with a realistic, timed mock interview

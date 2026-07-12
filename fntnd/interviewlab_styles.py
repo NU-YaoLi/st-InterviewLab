@@ -11,14 +11,27 @@ html, body, [class*="css"] {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-#MainMenu, footer, header { visibility: hidden; }
+#MainMenu, footer { visibility: hidden; }
+
+/* Remove Streamlit chrome so it does not leave a blank top band.
+   visibility:hidden still reserves height — use display:none for the header. */
+header,
+header[data-testid="stHeader"],
+[data-testid="stHeader"],
+[data-testid="stToolbar"],
+[data-testid="stDecoration"],
+.stAppHeader {
+    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+}
 
 /* Center all page content — works with @st.fragment (columns do not). */
 section.main > div.block-container {
     max-width: 52rem !important;
     margin-left: auto !important;
     margin-right: auto !important;
-    padding-top: 0.35rem;
+    padding-top: 0.5rem !important;
     padding-bottom: 2rem;
     padding-left: max(2.5rem, 10vw);
     padding-right: max(2.5rem, 10vw);
@@ -92,8 +105,8 @@ section.main > div.block-container {
 
 .hero-section {
     text-align: center;
-    padding: 1rem 1rem 1.25rem;
-    margin-bottom: 1rem;
+    padding: 0.15rem 1rem 1rem;
+    margin-bottom: 0.75rem;
     display: flex;
     flex-direction: column;
     align-items: center;
