@@ -62,6 +62,12 @@ def render_evaluation_view() -> None:
             "Complete a few question-and-answer turns before ending the interview."
         )
 
+    if results.get("security_terminated") or st.session_state.get("security_terminated"):
+        st.error(
+            results.get("improvements", [None])[0]
+            or "Interview ended due to repeated misuse attempts."
+        )
+
     dims = results.get("dimension_scores", {})
     d_cols = st.columns(3)
     for i, (key, label) in enumerate(labels.items()):
@@ -132,7 +138,12 @@ def _run_retroactive_evaluation() -> None:
     try:
         client = get_openai_client(get_api_key_from_session())
         state = state_from_session(st.session_state)
-        run_evaluation(client, state)
+        run_evaluation(
+            client,
+            state,
+            security_terminated=bool(st.session_state.get("security_terminated")),
+            security_strikes=int(st.session_state.get("security_consecutive_strikes") or 0),
+        )
         apply_state_to_session(state, st.session_state)
         st.rerun()
     except Exception as exc:

@@ -16,10 +16,28 @@ from bknd.interviewlab_evaluator import run_evaluation
 from bknd.interviewlab_language import NON_ENGLISH_UI_MESSAGE, is_english_text
 from bknd.interviewlab_openai import get_openai_client
 from bknd.interviewlab_realtime import finalize_realtime_interview, sync_transcript_to_state
+from bknd.interviewlab_security import SECURITY_UI_TERMINATED, SECURITY_UI_WARNING
 from fntnd.interviewlab_errors import display_openai_error
 from fntnd.interviewlab_realtime_component import render_realtime_interview
 from fntnd.interviewlab_state import apply_state_to_session, get_job_display_label, state_from_session
-from interviewlab_config import REALTIME_SILENCE_DURATION_MS
+from interviewlab_config import REALTIME_SILENCE_DURATION_MS, SECURITY_MAX_CONSECUTIVE_STRIKES
+
+
+def _normalize_transcript_turns(transcript: list) -> list[dict]:
+    """Keep role/content plus security flags for evaluation filtering."""
+    cleaned: list[dict] = []
+    for msg in transcript:
+        if not isinstance(msg, dict):
+            continue
+        role = msg.get("role")
+        if role not in ("assistant", "user"):
+            continue
+        turn: dict = {"role": role, "content": msg.get("content", "")}
+        if msg.get("security_blocked") or msg.get("security_flag"):
+            turn["security_blocked"] = True
+            turn["security_flag"] = True
+        cleaned.append(turn)
+    return cleaned
 
 
 def _timer_class(remaining_seconds: float) -> str:
@@ -195,23 +213,34 @@ def _apply_realtime_payload(payload: object) -> None:
     if status == "reattached":
         transcript = payload.get("transcript")
         if isinstance(transcript, list):
-            st.session_state["realtime_transcript"] = [
-                {"role": m.get("role"), "content": m.get("content", "")}
-                for m in transcript
-                if isinstance(m, dict) and m.get("role") in ("assistant", "user")
-            ]
+            st.session_state["realtime_transcript"] = _normalize_transcript_turns(transcript)
             _sync_interviewer_caption_from_transcript()
         return
 
     transcript = payload.get("transcript")
     if isinstance(transcript, list):
-        st.session_state["realtime_transcript"] = [
-            {"role": m.get("role"), "content": m.get("content", "")}
-            for m in transcript
-            if isinstance(m, dict) and m.get("role") in ("assistant", "user")
-        ]
+        st.session_state["realtime_transcript"] = _normalize_transcript_turns(transcript)
         _sync_interviewer_caption_from_transcript()
         _maybe_note_non_english(st.session_state["realtime_transcript"])
+
+    if event_type == "security_warning":
+        strikes = int(payload.get("security_strikes") or 0)
+        st.session_state["security_consecutive_strikes"] = strikes
+        st.session_state["_security_notice"] = SECURITY_UI_WARNING
+        return
+
+    if event_type == "security_terminated":
+        strikes = int(
+            payload.get("security_strikes")
+            or st.session_state.get("security_consecutive_strikes")
+            or SECURITY_MAX_CONSECUTIVE_STRIKES
+        )
+        st.session_state["security_consecutive_strikes"] = strikes
+        st.session_state["security_terminated"] = True
+        st.session_state["_security_notice"] = SECURITY_UI_TERMINATED
+        st.session_state["_security_finalize"] = True
+        st.session_state["_disconnect_realtime"] = True
+        return
 
     speaker = payload.get("active_speaker")
     if speaker == "you":
@@ -286,6 +315,8 @@ def _clear_finalize_flags() -> None:
         "_show_end_interview_confirm",
         "_ending_interview",
         "_ending_worker_started",
+        "_security_finalize",
+        "_security_notice",
     ):
         st.session_state.pop(key, None)
 
@@ -299,10 +330,19 @@ def _finalize_and_evaluate(api_key: str, *, closing_note: str | None = None) -> 
         state.chat_history.append({"role": "assistant", "content": closing_note})
     finalize_realtime_interview(state)
 
+    security_terminated = bool(st.session_state.get("security_terminated"))
+    security_strikes = int(st.session_state.get("security_consecutive_strikes") or 0)
+
     try:
         # Empty sessions return a local zero score (no LLM call).
+        # Security-terminated sessions return a locked zero score (no LLM call).
         client = get_openai_client(api_key)
-        run_evaluation(client, state)
+        run_evaluation(
+            client,
+            state,
+            security_terminated=security_terminated,
+            security_strikes=security_strikes,
+        )
         apply_state_to_session(state, st.session_state)
         st.session_state["realtime_ephemeral_key"] = None
         st.session_state["_disconnect_realtime"] = True
@@ -333,6 +373,15 @@ def render_interview_view(api_key: str) -> None:
 
     if st.session_state.pop("_time_expired", False):
         _handle_time_expiry(api_key)
+        st.rerun()
+        return
+
+    if st.session_state.pop("_security_finalize", False):
+        st.session_state["_disconnect_realtime"] = True
+        _finalize_and_evaluate(
+            api_key,
+            closing_note=SECURITY_UI_TERMINATED,
+        )
         st.rerun()
         return
 
@@ -382,6 +431,15 @@ def render_interview_view(api_key: str) -> None:
         st.rerun()
         return
 
+    if st.session_state.pop("_security_finalize", False):
+        st.session_state["_disconnect_realtime"] = True
+        _finalize_and_evaluate(
+            api_key,
+            closing_note=SECURITY_UI_TERMINATED,
+        )
+        st.rerun()
+        return
+
     # Natural completion signaled by the bridge after the last interviewer turn.
     if st.session_state.pop("_realtime_natural_complete", False):
         st.session_state["_disconnect_realtime"] = True
@@ -393,6 +451,10 @@ def render_interview_view(api_key: str) -> None:
     if err:
         st.error(err)
 
-    notice = st.session_state.get("_realtime_notice")
-    if notice:
-        st.warning(notice)
+    security_notice = st.session_state.get("_security_notice")
+    if security_notice:
+        st.error(security_notice)
+    else:
+        notice = st.session_state.get("_realtime_notice")
+        if notice:
+            st.warning(notice)

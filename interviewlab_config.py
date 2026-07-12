@@ -40,6 +40,13 @@ REALTIME_VAD_THRESHOLD = 0.65
 REALTIME_VAD_PREFIX_PADDING_MS = 300
 
 # -------------------
+# Voice security / anti-prompt-hacking
+# -------------------
+
+# Consecutive blocked misuse turns before the live session is force-ended.
+SECURITY_MAX_CONSECUTIVE_STRIKES = 3
+
+# -------------------
 # Interview settings
 # -------------------
 
@@ -98,6 +105,9 @@ SESSION_DEFAULTS: dict[str, Any] = {
     "_show_end_interview_confirm": False,
     "_generating_interview": False,
     "_generating_worker_started": False,
+    "security_consecutive_strikes": 0,
+    "security_terminated": False,
+    "_security_notice": None,
 }
 
 # -------------------

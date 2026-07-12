@@ -77,6 +77,10 @@ def _handle_start_interview(api_key: str) -> None:
         st.session_state["live_caption_text"] = "Connecting to your interviewer…"
         st.session_state["live_caption_speaker"] = "interviewer"
         st.session_state["_disconnect_realtime"] = False
+        st.session_state["security_consecutive_strikes"] = 0
+        st.session_state["security_terminated"] = False
+        st.session_state.pop("_security_notice", None)
+        st.session_state.pop("_security_finalize", None)
         st.session_state.pop("last_realtime_payload", None)
 
         st.session_state.pop("_generating_interview", None)

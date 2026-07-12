@@ -18,6 +18,7 @@ from interviewlab_config import (
     get_system_prompt,
     questions_for_duration,
 )
+from bknd.interviewlab_security import SECURITY_SYSTEM_RULES
 
 
 def build_realtime_instructions(state: InterviewState) -> str:
@@ -28,6 +29,8 @@ def build_realtime_instructions(state: InterviewState) -> str:
 
     return (
         get_system_prompt(state.interview_mode)
+        + "\n\n"
+        + SECURITY_SYSTEM_RULES
         + "\n\n"
         + context_block(ctx)
         + f"\n\nLive session settings:\n"
@@ -119,10 +122,12 @@ def sync_transcript_to_state(
     transcript: list[dict[str, str]],
 ) -> None:
     """Map Realtime transcript turns into chat_history and Q/A responses."""
+    from bknd.interviewlab_security import filter_transcript_for_evaluation
+
+    safe_transcript = filter_transcript_for_evaluation(transcript)
     state.chat_history = [
         {"role": m["role"], "content": m["content"]}
-        for m in transcript
-        if m.get("role") in ("assistant", "user") and (m.get("content") or "").strip()
+        for m in safe_transcript
     ]
 
     responses: list[dict[str, Any]] = []
@@ -133,7 +138,7 @@ def sync_transcript_to_state(
     for msg in state.chat_history:
         if msg["role"] == "assistant":
             content = msg["content"]
-            # Heuristic: short probe right after a candidate answer = follow-up.
+            # Heuristic: short probe after a candidate answer is treated as a follow-up.
             pending_is_follow_up = (
                 just_answered
                 and len(content.split()) <= 28

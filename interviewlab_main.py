@@ -37,6 +37,7 @@ _REQUIRED_CONFIG_NAMES = (
     "REALTIME_INTERRUPT_RESPONSE",
     "REALTIME_VAD_THRESHOLD",
     "REALTIME_VAD_PREFIX_PADDING_MS",
+    "SECURITY_MAX_CONSECUTIVE_STRIKES",
     "TOTAL_QUESTIONS",
     "DURATION_OPTIONS",
     "DEFAULT_DURATION_MINUTES",
@@ -161,6 +162,7 @@ def _bootstrap() -> None:
     _load_module("bknd.interviewlab_resume", _root / "bknd" / "interviewlab_resume.py")
     _load_module("bknd.interviewlab_engine", _root / "bknd" / "interviewlab_engine.py")
     _reinforce_config()
+    _load_module("bknd.interviewlab_security", _root / "bknd" / "interviewlab_security.py")
     _load_module("bknd.interviewlab_evaluator", _root / "bknd" / "interviewlab_evaluator.py")
     _load_module("bknd.interviewlab_realtime", _root / "bknd" / "interviewlab_realtime.py")
 
