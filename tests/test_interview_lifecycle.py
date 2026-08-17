@@ -43,6 +43,13 @@ class InterviewEndDetectionTests(unittest.TestCase):
             looks_like_interview_end("Thanks, that helps. What was the result?")
         )
 
+    def test_thank_you_plus_concluded_topic_is_not_end(self) -> None:
+        self.assertFalse(
+            looks_like_interview_end(
+                "Thank you, that concluded that topic. What was the result?"
+            )
+        )
+
     def test_empty_is_not_end(self) -> None:
         self.assertFalse(looks_like_interview_end(""))
         self.assertFalse(looks_like_interview_end("Got it."))

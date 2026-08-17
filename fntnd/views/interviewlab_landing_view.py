@@ -45,8 +45,16 @@ def _set_session_value(key: str, value: object) -> None:
         st.session_state[key] = value
 
 
+def _clear_uploaded_resume() -> None:
+    """Drop cached resume text and the file-uploader widget value."""
+    st.session_state["resume_file_text"] = ""
+    st.session_state["resume_file_name"] = ""
+    st.session_state["resume_file_hash"] = None
+    st.session_state.pop("resume_upload", None)
+
+
 def _sync_resume_from_sources(typed_background: str, uploaded_resume) -> None:
-    """Parse uploaded resume if needed and store the combined background text."""
+    """Parse a new upload if present; keep cached resume across unrelated reruns."""
     uploaded_text = st.session_state.get("resume_file_text", "")
     uploaded_name = st.session_state.get("resume_file_name", "")
 
@@ -64,12 +72,9 @@ def _sync_resume_from_sources(typed_background: str, uploaded_resume) -> None:
             except ResumeParseError as exc:
                 st.error(str(exc))
                 return
-    elif st.session_state.get("resume_file_hash") is not None:
-        uploaded_text = ""
-        uploaded_name = ""
-        st.session_state["resume_file_text"] = ""
-        st.session_state["resume_file_name"] = ""
-        st.session_state["resume_file_hash"] = None
+
+    # A missing widget value is not a clear — Streamlit often reports None after
+    # mode/duration clicks or fragment remounts. User clears via Remove.
 
     combined = combine_resume_sources(
         typed_text=typed_background,
@@ -171,6 +176,7 @@ def _setup_fields_fragment() -> None:
     uploaded_resume = st.file_uploader(
         "Upload resume (PDF, Word, or TXT)",
         type=["pdf", "docx", "txt"],
+        key="resume_upload",
         help="Optional. We extract text from your resume to personalize interview questions.",
     )
 
@@ -186,8 +192,16 @@ def _setup_fields_fragment() -> None:
     _sync_resume_from_sources(typed_background, uploaded_resume)
 
     resume_file_name = st.session_state.get("resume_file_name", "")
-    if resume_file_name and not uploaded_resume:
-        st.caption(f"Resume loaded: **{resume_file_name}** (upload a new file to replace)")
+    if resume_file_name:
+        st.caption(f"Resume loaded: **{resume_file_name}**")
+        if st.button("Remove uploaded resume", key="remove_resume_upload"):
+            _clear_uploaded_resume()
+            st.session_state["resume"] = combine_resume_sources(
+                typed_text=typed_background,
+                uploaded_text="",
+                uploaded_name="",
+            )
+            st.rerun(scope="fragment")
 
 
 @st.fragment

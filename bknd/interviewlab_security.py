@@ -333,6 +333,32 @@ def register_security_strike(
     return new_count, new_count >= max_strikes
 
 
+def apply_turn_security(
+    consecutive_strikes: int,
+    text: str,
+    *,
+    max_strikes: int = SECURITY_MAX_CONSECUTIVE_STRIKES,
+) -> tuple[int, bool, bool]:
+    """
+    Apply strike policy for one candidate transcription.
+
+    Empty / noise-only turns do not increment or reset the counter (otherwise
+    a silent VAD commit can wipe strikes after an injection attempt).
+
+    Returns ``(new_strike_count, should_terminate, is_attack)``.
+    """
+    cleaned = normalize_utterance(text)
+    if not cleaned:
+        return max(0, int(consecutive_strikes)), False, False
+    verdict = analyze_candidate_utterance(cleaned)
+    strikes, terminate = register_security_strike(
+        consecutive_strikes,
+        is_attack=verdict.is_attack,
+        max_strikes=max_strikes,
+    )
+    return strikes, terminate, verdict.is_attack
+
+
 def security_redirect_instructions(last_question: str = "") -> str:
     """Instructions override for a one-shot Realtime redirect response."""
     q = (last_question or "").strip()

@@ -56,9 +56,10 @@ def is_english_text(text: str) -> bool:
     if _NON_ENGLISH_PHRASES.search(cleaned):
         return False
 
-    # Mostly Latin letters, numbers, and punctuation.
-    latin_chars = len(re.findall(r"[A-Za-z]", cleaned))
-    letter_chars = len(re.findall(r"\w", cleaned, flags=re.UNICODE))
-    if letter_chars == 0:
+    # Compare Latin letters to Unicode letters only — digits/punctuation
+    # must not make "50" or "100%" look like another language.
+    latin_letters = len(re.findall(r"[A-Za-z]", cleaned))
+    unicode_letters = len(re.findall(r"[^\W\d_]", cleaned, flags=re.UNICODE))
+    if unicode_letters == 0:
         return True
-    return latin_chars / letter_chars >= 0.85
+    return latin_letters / unicode_letters >= 0.85

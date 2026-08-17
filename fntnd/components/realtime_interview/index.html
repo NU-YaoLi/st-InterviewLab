@@ -534,10 +534,11 @@
     }
 
     function handleCleanUserTurn(s, text) {
-      s.securityStrikes = 0;
       const cleaned = (text || "").trim();
       // Empty / noise-only VAD commits must not advance the interviewer
       // (create_response is false — we only respond after a real answer).
+      // Also do not reset security strikes — silence after an injection
+      // would otherwise wipe the consecutive-strike counter.
       if (!cleaned) {
         sendDc(s, { type: "input_audio_buffer.clear" });
         if (s.connected && !s.micGated && !s.interviewerOutputActive) {
@@ -545,6 +546,7 @@
         }
         return;
       }
+      s.securityStrikes = 0;
       // Non-English script: keep the turn for transcript, but ask for English (no strike).
       if (looksNonEnglish(cleaned)) {
         pushTurn(s, "user", cleaned);
@@ -595,19 +597,41 @@
           lower.indexOf("good bye") >= 0 ||
           lower.indexOf("good luck") >= 0 ||
           lower.indexOf("best of luck") >= 0 ||
+          lower.indexOf("we'll be in touch") >= 0 ||
+          lower.indexOf("we will be in touch") >= 0 ||
           lower.indexOf("that's all for today") >= 0 ||
-          lower.indexOf("that is all for today") >= 0 ||
-          lower.indexOf("concluded") >= 0;
+          lower.indexOf("that is all for today") >= 0;
         if (thanks && closing) return true;
       }
       return false;
     }
 
     function looksNonEnglish(text) {
-      // Mirror bknd/interviewlab_language.py non-Latin script check (lightweight).
-      return /[\u0400-\u04FF\u0600-\u06FF\u0900-\u097F\u3040-\u30FF\u4E00-\u9FFF\uAC00-\uD7AF\u0E00-\u0E7F\u0370-\u03FF]/.test(
-        text || ""
-      );
+      // Mirror bknd/interviewlab_language.py (scripts + common Latin-script phrases).
+      const cleaned = String(text || "").trim();
+      if (!cleaned) return false;
+      if (
+        /[\u0400-\u04FF\u0600-\u06FF\u0900-\u097F\u3040-\u30FF\u4E00-\u9FFF\uAC00-\uD7AF\u0E00-\u0E7F\u0370-\u03FF]/.test(
+          cleaned
+        )
+      ) {
+        return true;
+      }
+      if (
+        /\b(bonjour|merci|salut|gracias|hola|buenos|por favor|danke|bitte|guten|ich bin|obrigado|obrigada|bom dia|ni hao|xie xie|annyeong|gamsahamnida)\b/i.test(
+          cleaned
+        )
+      ) {
+        return true;
+      }
+      const latin = (cleaned.match(/[A-Za-z]/g) || []).length;
+      const letters = (
+        cleaned.match(
+          /[A-Za-z\u00C0-\u024F\u0400-\u04FF\u0600-\u06FF\u0900-\u097F\u3040-\u30FF\u4E00-\u9FFF\uAC00-\uD7AF\u0E00-\u0E7F\u0370-\u03FF]/g
+        ) || []
+      ).length;
+      if (letters === 0) return false;
+      return latin / letters < 0.85;
     }
 
     function bindDataChannel(s) {
@@ -681,7 +705,6 @@
         } else {
           setStatus("Live audio connected", "live");
         }
-        s.activeSpeaker = "interviewer";
         return;
       }
 
@@ -1069,12 +1092,32 @@
             // Unexpected drop after we were live — tell Streamlit so recovery UI can show.
             if (s.connected || s.startedResponse) {
               setStatus("Connection lost", "error");
+              const transcriptCopy = (s.transcript || []).slice();
               emitToStreamlit(s, {
                 type: "disconnected",
                 error: "peer_disconnected",
-                transcript: (s.transcript || []).slice(),
+                transcript: transcriptCopy,
                 connected: false,
               });
+              // Stop mic tracks so a failed peer does not keep the microphone open.
+              // "disconnected" can flicker — only tear down on failed/closed immediately;
+              // on disconnected, wait briefly in case ICE recovers.
+              const sid = id;
+              if (state === "failed" || state === "closed") {
+                cleanupSession(sid);
+              } else {
+                setTimeout(function () {
+                  const cur = store[sid];
+                  if (!cur || !cur.pc) return;
+                  if (cur.disconnectRequested || cur.securityTerminating) return;
+                  const stillDown = ["failed", "disconnected", "closed"].indexOf(
+                    cur.pc.connectionState
+                  ) >= 0;
+                  if (stillDown) {
+                    cleanupSession(sid);
+                  }
+                }, 2000);
+              }
             }
           }
         };

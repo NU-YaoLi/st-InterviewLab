@@ -68,6 +68,15 @@ EMPTY_INTERVIEW_RESULT: dict[str, Any] = {
 }
 
 
+def _as_str_list(value: Any) -> list[str]:
+    """Coerce model output into a list of strings (never character-split a string)."""
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    return []
+
+
 def _parse_evaluation_json(raw: str) -> dict[str, Any]:
     text = raw.strip()
     if text.startswith("```"):
@@ -87,8 +96,8 @@ def _parse_evaluation_json(raw: str) -> dict[str, Any]:
             ),
             "structure": _clamp_int(dimension_scores.get("structure", 0), 0, 10),
         },
-        "strengths": list(data.get("strengths", [])),
-        "improvements": list(data.get("improvements", [])),
+        "strengths": _as_str_list(data.get("strengths", [])),
+        "improvements": _as_str_list(data.get("improvements", [])),
         "sample_answer": str(data.get("sample_answer", "")),
     }
 
