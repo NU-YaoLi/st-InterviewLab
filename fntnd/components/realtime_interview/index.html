@@ -156,6 +156,15 @@
           interviewerOutputActive: false,
           remoteAudioPlaying: false,
           ungateSafetyTimer: null,
+          ungateWatchTimer: null,
+          ungateQuietSince: null,
+          serverAudioComplete: false,
+          playbackCtx: null,
+          playbackAnalyser: null,
+          playbackData: null,
+          unmuteHoldMs: 700,
+          unmuteSafetyMs: 30000,
+          unmuteFallbackDrainMs: 1500,
           awaitingFirstGreeting: false,
         };
       }
@@ -438,18 +447,76 @@
       }
     }
 
+    function clearUngateWatch(s) {
+      if (s.ungateWatchTimer) {
+        try {
+          clearInterval(s.ungateWatchTimer);
+        } catch (e) {}
+        s.ungateWatchTimer = null;
+      }
+      s.ungateQuietSince = null;
+    }
+
+    function attachRemotePlaybackMonitor(s, stream) {
+      if (!stream) return;
+      try {
+        if (s.playbackCtx && s.playbackCtx.state !== "closed") {
+          s.playbackCtx.close().catch(function () {});
+        }
+      } catch (e) {}
+      s.playbackCtx = null;
+      s.playbackAnalyser = null;
+      s.playbackData = null;
+      try {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return;
+        const ctx = new Ctx();
+        ctx.resume().catch(function () {});
+        const source = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 1024;
+        analyser.smoothingTimeConstant = 0.35;
+        source.connect(analyser);
+        s.playbackCtx = ctx;
+        s.playbackAnalyser = analyser;
+        s.playbackData = new Uint8Array(analyser.fftSize);
+      } catch (e) {
+        s.playbackAnalyser = null;
+      }
+    }
+
+    function remoteAudioIsAudible(s) {
+      const analyser = s.playbackAnalyser;
+      if (!analyser || !s.playbackData) return null;
+      try {
+        analyser.getByteTimeDomainData(s.playbackData);
+      } catch (e) {
+        return null;
+      }
+      let sum = 0;
+      for (let i = 0; i < s.playbackData.length; i++) {
+        const v = (s.playbackData[i] - 128) / 128;
+        sum += v * v;
+      }
+      return Math.sqrt(sum / s.playbackData.length) > 0.02;
+    }
+
     function beginInterviewerOutput(s) {
       clearUngateSafetyTimer(s);
+      clearUngateWatch(s);
       s.awaitingFirstGreeting = false;
+      s.serverAudioComplete = false;
       s.interviewerOutputActive = true;
       setMicGated(s, true);
     }
 
     function endInterviewerOutput(s) {
       clearUngateSafetyTimer(s);
+      clearUngateWatch(s);
       s.awaitingFirstGreeting = false;
       s.interviewerOutputActive = false;
       s.remoteAudioPlaying = false;
+      s.serverAudioComplete = false;
       if (s.securityTerminating || s.disconnectRequested) {
         setMicGated(s, true);
         return;
@@ -460,15 +527,88 @@
       }
     }
 
+    function releaseTurnToCandidate(s) {
+      endInterviewerOutput(s);
+      s.activeSpeaker = "none";
+      emitToStreamlit(s, {
+        type: "speaker_update",
+        active_speaker: "none",
+        caption: {
+          speaker: "interviewer",
+          text: s.lastInterviewerCaption || latestInterviewerCaption(s),
+        },
+      });
+      const last = s.lastInterviewerCaption || (
+        s.transcript.length ? s.transcript[s.transcript.length - 1].content : ""
+      );
+      if (looksLikeInterviewEnd(last)) {
+        emitToStreamlit(s, {
+          type: "interview_complete",
+          transcript: s.transcript.slice(),
+        });
+      }
+    }
+
+    /**
+     * Server "audio stopped" != local playback finished. Keep the mic gated
+     * until the remote stream is actually quiet (or a conservative drain).
+     */
+    function requestUngateAfterPlayback(s) {
+      clearUngateWatch(s);
+      if (s.securityTerminating || s.disconnectRequested) {
+        releaseTurnToCandidate(s);
+        return;
+      }
+      setMicGated(s, true);
+      setStatus("Wait for interviewer to finish…", "muted");
+      const hold = s.unmuteHoldMs || 700;
+      const fallbackDrain = s.unmuteFallbackDrainMs || 1500;
+      const safety = s.unmuteSafetyMs || 30000;
+      const startedAt = Date.now();
+      s.serverAudioComplete = true;
+
+      s.ungateWatchTimer = setInterval(function () {
+        if (s.disconnectRequested || s.securityTerminating) {
+          clearUngateWatch(s);
+          return;
+        }
+        if (!s.interviewerOutputActive && !s.micGated) {
+          clearUngateWatch(s);
+          return;
+        }
+        const audible = remoteAudioIsAudible(s);
+        if (audible === true) {
+          s.ungateQuietSince = null;
+          return;
+        }
+        if (audible === false) {
+          if (!s.ungateQuietSince) s.ungateQuietSince = Date.now();
+          if (Date.now() - s.ungateQuietSince >= hold) {
+            releaseTurnToCandidate(s);
+          }
+          return;
+        }
+        if (Date.now() - startedAt >= fallbackDrain) {
+          releaseTurnToCandidate(s);
+        }
+      }, 50);
+
+      scheduleUngateSafety(s, safety);
+    }
+
     function scheduleUngateSafety(s, ms) {
       clearUngateSafetyTimer(s);
-      // If output never starts/stops, do not leave the mic muted forever.
-      const delay = typeof ms === "number" ? ms : 6000;
+      const delay = typeof ms === "number" ? ms : 30000;
       s.ungateSafetyTimer = setTimeout(function () {
         s.ungateSafetyTimer = null;
         if (s.disconnectRequested || s.securityTerminating) return;
+        // Never steal the turn while interviewer audio is still audible.
+        if (remoteAudioIsAudible(s) === true) {
+          scheduleUngateSafety(s, s.unmuteHoldMs || 700);
+          return;
+        }
         if (s.micGated || s.interviewerOutputActive || s.remoteAudioPlaying || s.awaitingFirstGreeting) {
-          endInterviewerOutput(s);
+          releaseTurnToCandidate(s);
         }
       }, delay);
     }
@@ -478,10 +618,8 @@
       s.awaitingFirstGreeting = true;
       s.micGated = true;
       applyMicTrackEnabled(s, false);
-      // Drop any audio buffered while the mic was live during WebRTC setup.
       sendDc(s, { type: "input_audio_buffer.clear" });
-      // Safety: if response.create produces no audio/events, ungate so the session is usable.
-      scheduleUngateSafety(s, 8000);
+      scheduleUngateSafety(s, s.unmuteSafetyMs || 30000);
     }
 
     function cancelAndRespond(s, instructions) {
@@ -564,7 +702,8 @@
         return;
       }
       pushTurn(s, "user", cleaned);
-      // One interviewer turn per candidate answer — never auto-fire on silence.
+      // Gate immediately so "Your turn" cannot overlap interviewer thinking/speech.
+      beginInterviewerOutput(s);
       sendDc(s, { type: "response.create" });
     }
 
@@ -734,17 +873,10 @@
       }
 
       if (type === "output_audio_buffer.stopped") {
-        // Prefer this over response.done — audio may still be playing after generation ends.
-        endInterviewerOutput(s);
-        s.activeSpeaker = "none";
-        emitToStreamlit(s, {
-          type: "speaker_update",
-          active_speaker: "none",
-          caption: {
-            speaker: "interviewer",
-            text: s.lastInterviewerCaption || latestInterviewerCaption(s),
-          },
-        });
+        // Server finished *sending*. Local playback (jitter buffer) may still
+        // be speaking the rest of the question — do not open the candidate turn yet.
+        s.remoteAudioPlaying = false;
+        requestUngateAfterPlayback(s);
         return;
       }
 
@@ -862,12 +994,8 @@
         }
         if (s.remoteAudioPlaying) {
           setStatus("Wait for interviewer to finish…", "muted");
-        } else if (s.interviewerOutputActive) {
-          // Transcript finished but audio may still drain — keep gated briefly.
-          setStatus("Wait for interviewer to finish…", "muted");
-          scheduleUngateSafety(s, 4000);
         } else {
-          endInterviewerOutput(s);
+          requestUngateAfterPlayback(s);
         }
         return;
       }
@@ -892,11 +1020,11 @@
           }
         }
         // Fallback ungate when buffer.stopped is missing (no audio / older events).
-        if (!s.remoteAudioPlaying) {
-          endInterviewerOutput(s);
-        } else {
+        // Still wait for local playback to go quiet — response.done is not "done speaking".
+        if (s.remoteAudioPlaying) {
           setStatus("Wait for interviewer to finish…", "muted");
-          scheduleUngateSafety(s, 6000);
+        } else {
+          requestUngateAfterPlayback(s);
         }
         if (s.securityTerminating) {
           if (s.securityTerminateTimer) {
@@ -907,15 +1035,6 @@
           }
           stopSession("security");
           return;
-        }
-        const last = s.lastInterviewerCaption || (
-          s.transcript.length ? s.transcript[s.transcript.length - 1].content : ""
-        );
-        if (looksLikeInterviewEnd(last)) {
-          emitToStreamlit(s, {
-            type: "interview_complete",
-            transcript: s.transcript.slice(),
-          });
         }
         return;
       }
@@ -936,6 +1055,13 @@
     async function cleanupSession(id) {
       const s = store[id];
       if (!s) return;
+      clearUngateSafetyTimer(s);
+      clearUngateWatch(s);
+      try {
+        if (s.playbackCtx && s.playbackCtx.state !== "closed") {
+          s.playbackCtx.close();
+        }
+      } catch (e) {}
       try {
         if (s.dc) s.dc.close();
       } catch (e) {}
@@ -1067,6 +1193,7 @@
         s._dcMessageHandler = null;
         s._dcOpenHandler = null;
         clearUngateSafetyTimer(s);
+        clearUngateWatch(s);
         if (!s.remoteAudio) {
           s.remoteAudio = document.createElement("audio");
           s.remoteAudio.autoplay = true;
@@ -1078,6 +1205,7 @@
         s.pc.ontrack = (e) => {
           s.remoteAudio.srcObject = e.streams[0];
           s.remoteAudio.play().catch(function () {});
+          attachRemotePlaybackMonitor(s, e.streams[0]);
         };
         s.localStream.getTracks().forEach((track) => s.pc.addTrack(track, s.localStream));
 
@@ -1311,6 +1439,9 @@
       const maxStrikes = Number(args.max_security_strikes || 3);
       const redirectSpoken = args.security_redirect_spoken || "";
       const terminationSpoken = args.security_termination_spoken || "";
+      const unmuteHoldMs = Number(args.unmute_hold_ms || 0);
+      const unmuteSafetyMs = Number(args.unmute_safety_ms || 0);
+      const unmuteFallbackDrainMs = Number(args.unmute_fallback_drain_ms || 0);
 
       Streamlit.setFrameHeight(42);
 
@@ -1319,6 +1450,9 @@
         if (maxStrikes > 0) s.maxSecurityStrikes = maxStrikes;
         if (redirectSpoken) s.securityRedirectSpoken = redirectSpoken;
         if (terminationSpoken) s.securityTerminationSpoken = terminationSpoken;
+        if (unmuteHoldMs > 0) s.unmuteHoldMs = unmuteHoldMs;
+        if (unmuteSafetyMs > 0) s.unmuteSafetyMs = unmuteSafetyMs;
+        if (unmuteFallbackDrainMs > 0) s.unmuteFallbackDrainMs = unmuteFallbackDrainMs;
       }
 
       if (disconnect) {

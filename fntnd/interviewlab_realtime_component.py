@@ -7,6 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from bknd.interviewlab_security import security_bridge_config
+from interviewlab_config import (
+    REALTIME_UNMUTE_FALLBACK_DRAIN_MS,
+    REALTIME_UNMUTE_HOLD_MS,
+    REALTIME_UNMUTE_SAFETY_MS,
+)
 
 realtime_interview: Callable[..., Any] | None = None
 
@@ -43,6 +48,9 @@ def render_realtime_interview(
         max_security_strikes=int(cfg["max_strikes"]),
         security_redirect_spoken=str(cfg["redirect_spoken"]),
         security_termination_spoken=str(cfg["termination_spoken"]),
+        unmute_hold_ms=int(REALTIME_UNMUTE_HOLD_MS),
+        unmute_safety_ms=int(REALTIME_UNMUTE_SAFETY_MS),
+        unmute_fallback_drain_ms=int(REALTIME_UNMUTE_FALLBACK_DRAIN_MS),
         key=key,
         default=None,
     )

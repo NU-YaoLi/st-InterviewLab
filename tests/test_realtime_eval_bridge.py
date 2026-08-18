@@ -26,6 +26,7 @@ if "openai" not in sys.modules:
     openai_stub.OpenAIError = _OpenAIError
     sys.modules["openai"] = openai_stub
 
+from interviewlab_config import REALTIME_UNMUTE_HOLD_MS, REALTIME_UNMUTE_SAFETY_MS
 from bknd.interviewlab_engine import InterviewState, begin_live_session, start_interview_timer
 from bknd.interviewlab_evaluator import _parse_evaluation_json, evaluate_full_interview
 from bknd.interviewlab_language import is_english_text
@@ -153,6 +154,10 @@ class RealtimeTurnTakingConfigTests(unittest.TestCase):
         text = build_realtime_instructions(InterviewState())
         self.assertIn("ONE interview question per speaking turn", text)
         self.assertIn("Never ask a second interview question", text)
+
+    def test_unmute_holds_until_after_spoken_question(self) -> None:
+        self.assertGreaterEqual(REALTIME_UNMUTE_HOLD_MS, 500)
+        self.assertGreaterEqual(REALTIME_UNMUTE_SAFETY_MS, 15000)
 
 
 if __name__ == "__main__":

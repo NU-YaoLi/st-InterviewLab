@@ -40,6 +40,14 @@ REALTIME_INTERRUPT_RESPONSE = False
 # Server VAD sensitivity (0–1). Higher = less likely to treat background noise as speech.
 REALTIME_VAD_THRESHOLD = 0.65
 REALTIME_VAD_PREFIX_PADDING_MS = 300
+# Quiet time after interviewer audio before the candidate turn starts.
+# output_audio_buffer.stopped means the server finished *sending*, not that
+# the browser finished *playing* — wait for local playback to go silent.
+REALTIME_UNMUTE_HOLD_MS = 700
+# Deadlock cap only. Must be longer than a typical spoken question.
+REALTIME_UNMUTE_SAFETY_MS = 30000
+# If Web Audio metering is unavailable, wait this long after server-stopped.
+REALTIME_UNMUTE_FALLBACK_DRAIN_MS = 1500
 # Ephemeral client-secret TTL for WebRTC connect/reconnect (10s–7200s API limit).
 # Session audio may continue after expiry once connected; refresh before reconnect.
 REALTIME_EPHEMERAL_MIN_TTL_SECONDS = 600
