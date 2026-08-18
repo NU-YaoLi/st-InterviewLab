@@ -106,6 +106,12 @@ def main() -> None:
     init_session_state()
     inject_styles()
 
+    persist = _mod("fntnd.interviewlab_persist")
+    if not persist.ensure_setup_hydrated():
+        # Wait for localStorage before mounting the setup form so F5 restore
+        # lands in widget state instead of being ignored.
+        return
+
     # Resolve views from sys.modules (set by interviewlab_main bootstrap).
     landing = _mod("fntnd.views.interviewlab_landing_view")
     interview = _mod("fntnd.views.interviewlab_interview_view")
@@ -125,6 +131,7 @@ def main() -> None:
         st.divider()
         with st.expander("Full interview transcript"):
             render_chat_history()
+        persist.save_setup_snapshot()
     elif interview_active:
         api_key = get_api_key_from_session()
         if not api_key:

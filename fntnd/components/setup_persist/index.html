@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    html, body { margin: 0; padding: 0; height: 0; overflow: hidden; background: transparent; }
+  </style>
+</head>
+<body>
+  <script>
+    (function () {
+      const RENDER = "streamlit:render";
+      const COMPONENT_READY = "streamlit:componentReady";
+      const SET_FRAME_HEIGHT = "streamlit:setFrameHeight";
+      const SET_COMPONENT_VALUE = "streamlit:setComponentValue";
+      const listeners = {};
+      let registeredMessageListener = false;
+
+      function addEventListener(type, callback) {
+        if (!listeners[type]) listeners[type] = [];
+        listeners[type].push(callback);
+      }
+      function dispatchEvent(type, event) {
+        (listeners[type] || []).forEach(function (cb) { cb(event); });
+      }
+      function sendBackMsg(type, data) {
+        window.parent.postMessage(
+          Object.assign({ isStreamlitMessage: true, type: type }, data),
+          "*"
+        );
+      }
+      window.Streamlit = {
+        RENDER_EVENT: RENDER,
+        events: { addEventListener: addEventListener, dispatchEvent: dispatchEvent },
+        setComponentReady: function () {
+          if (!registeredMessageListener) {
+            window.addEventListener("message", function (event) {
+              const data = event.data;
+              if (!data || data.type !== RENDER) return;
+              dispatchEvent(RENDER, {
+                detail: {
+                  disabled: Boolean(data.disabled),
+                  args: data.args || {},
+                  theme: data.theme,
+                },
+              });
+            });
+            registeredMessageListener = true;
+          }
+          sendBackMsg(COMPONENT_READY, { apiVersion: 1 });
+        },
+        setFrameHeight: function (height) {
+          sendBackMsg(SET_FRAME_HEIGHT, { height: height || 0 });
+        },
+        setComponentValue: function (value) {
+          sendBackMsg(SET_COMPONENT_VALUE, { value: value, dataType: "json" });
+        },
+      };
+    })();
+
+    const Streamlit = window.Streamlit;
+    const DEFAULT_KEY = "interviewlab_setup_v1";
+    let lastEmitKey = "";
+
+    function storage() {
+      try {
+        if (window.parent && window.parent.localStorage) return window.parent.localStorage;
+      } catch (e) {}
+      try {
+        return window.localStorage;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function emit(value) {
+      const key = JSON.stringify(value);
+      if (key === lastEmitKey) return;
+      lastEmitKey = key;
+      Streamlit.setComponentValue(value);
+    }
+
+    function onRender(event) {
+      const args = (event.detail && event.detail.args) || {};
+      const op = args.op || "load";
+      const storeKey = args.storage_key || DEFAULT_KEY;
+      Streamlit.setFrameHeight(0);
+
+      const store = storage();
+      if (op === "save") {
+        if (store) {
+          try {
+            store.setItem(storeKey, JSON.stringify(args.payload || {}));
+          } catch (e) {}
+        }
+        emit({ op: "save", ok: true });
+        return;
+      }
+
+      let payload = null;
+      if (store) {
+        try {
+          const raw = store.getItem(storeKey);
+          if (raw) payload = JSON.parse(raw);
+        } catch (e) {
+          payload = null;
+        }
+      }
+      emit({ op: "load", payload: payload });
+    }
+
+    Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, onRender);
+    Streamlit.setComponentReady();
+    Streamlit.setFrameHeight(0);
+  </script>
+</body>
+</html>

@@ -155,7 +155,6 @@ def _setup_fields_fragment() -> None:
     )
     job_details = st.text_area(
         "Job details",
-        value=st.session_state.get("job_description", ""),
         height=140,
         placeholder=(
             "e.g. Senior Software Engineer (Mid-Senior)\n\n"
@@ -163,8 +162,8 @@ def _setup_fields_fragment() -> None:
             "distributed systems, and cloud infrastructure…"
         ),
         label_visibility="collapsed",
+        key="job_description",
     )
-    st.session_state["job_description"] = job_details
     st.session_state["target_role"] = ""
     st.session_state["target_level"] = ""
 
@@ -182,12 +181,11 @@ def _setup_fields_fragment() -> None:
 
     typed_background = st.text_area(
         "Background notes",
-        value=st.session_state.get("resume_typed", st.session_state.get("resume", "")),
         height=80,
         placeholder="Or paste a brief summary of your experience, skills, and projects…",
         label_visibility="collapsed",
+        key="resume_typed",
     )
-    st.session_state["resume_typed"] = typed_background
 
     _sync_resume_from_sources(typed_background, uploaded_resume)
 
@@ -197,11 +195,15 @@ def _setup_fields_fragment() -> None:
         if st.button("Remove uploaded resume", key="remove_resume_upload"):
             _clear_uploaded_resume()
             st.session_state["resume"] = combine_resume_sources(
-                typed_text=typed_background,
+                typed_text=st.session_state.get("resume_typed") or "",
                 uploaded_text="",
                 uploaded_name="",
             )
             st.rerun(scope="fragment")
+
+    from fntnd.interviewlab_persist import save_setup_snapshot
+
+    save_setup_snapshot()
 
 
 @st.fragment

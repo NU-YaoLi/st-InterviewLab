@@ -182,6 +182,10 @@ def _bootstrap() -> None:
         _root / "fntnd" / "interviewlab_realtime_component.py",
     )
     _load_module(
+        "fntnd.interviewlab_persist",
+        _root / "fntnd" / "interviewlab_persist.py",
+    )
+    _load_module(
         "fntnd.interviewlab_transcript",
         _root / "fntnd" / "interviewlab_transcript.py",
     )
@@ -237,6 +241,18 @@ _interviewlab_realtime = components.declare_component(
 )
 sys.modules["fntnd.interviewlab_realtime_component"].set_realtime_component(
     _interviewlab_realtime
+)
+
+_persist_component_dir = (_root / "fntnd" / "components" / "setup_persist").resolve()
+if not (_persist_component_dir / "index.html").is_file():
+    raise FileNotFoundError(f"Setup persist frontend missing: {_persist_component_dir}")
+
+_interviewlab_persist = components.declare_component(
+    "interviewlab_setup_persist",
+    path=str(_persist_component_dir),
+)
+sys.modules["fntnd.interviewlab_persist"].set_setup_persist_component(
+    _interviewlab_persist
 )
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🎙️", layout="wide")
