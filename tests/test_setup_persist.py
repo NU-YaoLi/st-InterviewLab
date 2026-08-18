@@ -17,7 +17,7 @@ if "streamlit" not in sys.modules:
     st.session_state = {}
     sys.modules["streamlit"] = st
 
-from fntnd.interviewlab_persist import apply_setup_snapshot, snapshot_setup
+from fntnd.interviewlab_persist import apply_setup_snapshot, seed_setup_widget_keys, snapshot_setup
 
 
 class SetupPersistTests(unittest.TestCase):
@@ -64,6 +64,20 @@ class SetupPersistTests(unittest.TestCase):
         self.assertFalse(apply_setup_snapshot(session, None))
         self.assertFalse(apply_setup_snapshot(session, "nope"))  # type: ignore[arg-type]
         self.assertEqual(session["job_description"], "keep me")
+
+    def test_seed_widget_keys_from_canonical_without_overwriting(self) -> None:
+        session = {
+            "job_description": "Restored job text",
+            "resume_typed": "notes",
+        }
+        seed_setup_widget_keys(session)
+        self.assertEqual(session["job_description_input"], "Restored job text")
+        self.assertEqual(session["resume_typed_input"], "notes")
+        session["job_description_input"] = "typed in widget"
+        seed_setup_widget_keys(session)
+        self.assertEqual(session["job_description_input"], "typed in widget")
+        payload = snapshot_setup(session)
+        self.assertNotIn("job_description_input", payload)
 
 
 if __name__ == "__main__":

@@ -31,6 +31,14 @@ PERSIST_KEYS: tuple[str, ...] = (
     "interview_history",
 )
 
+# Widget keys must differ from canonical persist keys. Streamlit deletes a
+# widget's session_state entry when that widget is not rendered (e.g. the
+# "Preparing your mock interview" dialog), which would empty job details.
+WIDGET_KEY_MAP: dict[str, str] = {
+    "job_description": "job_description_input",
+    "resume_typed": "resume_typed_input",
+}
+
 setup_persist: Callable[..., Any] | None = None
 
 
@@ -62,6 +70,13 @@ def apply_setup_snapshot(session: dict[str, Any] | Any, payload: dict[str, Any] 
         session[key] = copy.deepcopy(payload[key])
         applied = True
     return applied
+
+
+def seed_setup_widget_keys(session: dict[str, Any] | Any) -> None:
+    """Fill widget keys from canonical fields when the form is about to mount."""
+    for canonical, widget_key in WIDGET_KEY_MAP.items():
+        if widget_key not in session:
+            session[widget_key] = session.get(canonical) or ""
 
 
 def _render_persist(*, op: str, payload: dict[str, Any] | None, key: str) -> dict | None:
@@ -109,5 +124,11 @@ def ensure_setup_hydrated() -> bool:
     payload = result.get("payload") if isinstance(result, dict) else None
     apply_setup_snapshot(st.session_state, payload)
     st.session_state["_setup_hydrated"] = True
+    # Stale "enter job details" from a prior start attempt is not persisted,
+    # but clear it if this restore already has job text.
+    if (st.session_state.get("job_description") or "").strip():
+        err = str(st.session_state.get("_validation_error") or "")
+        if "job details" in err.lower():
+            st.session_state.pop("_validation_error", None)
     st.rerun()
     return False

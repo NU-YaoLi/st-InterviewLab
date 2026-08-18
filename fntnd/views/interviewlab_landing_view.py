@@ -8,6 +8,7 @@ import streamlit as st
 
 from bknd.interviewlab_resume import ResumeParseError, combine_resume_sources, extract_resume_text
 from fntnd.interviewlab_errors import queue_validation_error
+from fntnd.interviewlab_persist import seed_setup_widget_keys
 
 _MODE_OPTIONS = [
     (
@@ -153,6 +154,7 @@ def _setup_fields_fragment() -> None:
         "Job Details",
         "Paste the job title, level, and description — anything that helps tailor your questions.",
     )
+    seed_setup_widget_keys(st.session_state)
     job_details = st.text_area(
         "Job details",
         height=140,
@@ -162,8 +164,9 @@ def _setup_fields_fragment() -> None:
             "distributed systems, and cloud infrastructure…"
         ),
         label_visibility="collapsed",
-        key="job_description",
+        key="job_description_input",
     )
+    st.session_state["job_description"] = job_details or ""
     st.session_state["target_role"] = ""
     st.session_state["target_level"] = ""
 
@@ -184,8 +187,9 @@ def _setup_fields_fragment() -> None:
         height=80,
         placeholder="Or paste a brief summary of your experience, skills, and projects…",
         label_visibility="collapsed",
-        key="resume_typed",
+        key="resume_typed_input",
     )
+    st.session_state["resume_typed"] = typed_background or ""
 
     _sync_resume_from_sources(typed_background, uploaded_resume)
 

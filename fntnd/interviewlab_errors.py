@@ -105,8 +105,16 @@ def queue_validation_error(message: str) -> None:
 def show_queued_validation_error() -> None:
     """Open the validation dialog when a queued message is present."""
     message = st.session_state.get("_validation_error")
-    if message:
-        show_validation_error(message)
+    if not message:
+        return
+    # After F5 restore (or widget-key wipe on the start dialog), job text can
+    # already be present while a stale "enter job details" error is still queued.
+    if "job details" in str(message).lower() and (
+        st.session_state.get("job_description") or ""
+    ).strip():
+        st.session_state.pop("_validation_error", None)
+        return
+    show_validation_error(message)
 
 
 @st.dialog("End this interview?")
