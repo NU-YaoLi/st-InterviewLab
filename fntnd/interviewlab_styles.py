@@ -380,6 +380,54 @@ div[data-testid="stHorizontalBlock"]:has(.interview-header-title) div[data-testi
 .strengths-card { border-left: 4px solid #10b981; }
 .improvements-card { border-left: 4px solid #f59e0b; }
 
+.turn-eval-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 1rem 1.15rem;
+    margin-bottom: 0.75rem;
+}
+.turn-eval-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+.turn-eval-label { font-weight: 700; color: #312e81; font-size: 0.95rem; }
+.turn-eval-score { font-weight: 700; color: #4338ca; font-size: 0.95rem; }
+.turn-q, .turn-a { color: #334155; font-size: 0.9rem; margin: 0.25rem 0; line-height: 1.45; }
+.turn-dims { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.5rem 0 0.25rem; }
+.turn-dim {
+    background: #eef2ff;
+    color: #3730a3;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.2rem 0.5rem;
+    border-radius: 999px;
+}
+.turn-feedback { color: #475569; font-size: 0.88rem; margin: 0.4rem 0 0; }
+
+.history-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 0.85rem 1rem;
+    margin: 0.6rem 0 0.25rem;
+}
+.history-score {
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: #4338ca;
+    min-width: 3rem;
+    text-align: center;
+}
+.history-role { font-weight: 600; color: #1e293b; }
+.history-sub { font-size: 0.8rem; color: #64748b; margin-top: 0.15rem; }
+
 div[data-testid="stSidebar"] { display: none; }
 section[data-testid="stSidebar"] { display: none; }
 

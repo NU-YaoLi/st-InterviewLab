@@ -8,12 +8,18 @@ import streamlit as st
 
 from bknd.interviewlab_evaluator import get_dimension_labels, run_evaluation
 from bknd.interviewlab_openai import get_openai_client
+from bknd.interviewlab_report import payload_from_session
 from fntnd.interviewlab_errors import display_openai_error
 from fntnd.interviewlab_state import (
     apply_state_to_session,
     get_api_key_from_session,
     get_job_display_label,
+    record_completed_interview,
     state_from_session,
+)
+from fntnd.views.interviewlab_history_view import (
+    render_history_panel,
+    render_report_downloads,
 )
 
 
@@ -120,11 +126,14 @@ def render_evaluation_view() -> None:
         st.markdown("#### Sample Optimized Answer")
         st.info(sample)
 
-    turn_evals = st.session_state.get("turn_evaluations", [])
-    if turn_evals:
-        with st.expander("Per-turn evaluations"):
-            for i, te in enumerate(turn_evals, start=1):
-                st.markdown(f"**Turn {i}** — Score: {te.get('overall_score', 'N/A')}/100")
+    _render_turn_evaluations(labels)
+
+    st.markdown("#### Download your report")
+    st.caption("Includes overall score, rubric, strengths, improvements, per-question scores, and transcript.")
+    render_report_downloads(
+        payload_from_session(st.session_state, role_label=role),
+        key_prefix="current_eval",
+    )
 
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("Start New Interview", type="primary", use_container_width=True):
@@ -132,6 +141,46 @@ def render_evaluation_view() -> None:
 
         reset_runtime_session()
         st.rerun()
+
+    render_history_panel(title="Progress")
+
+
+def _render_turn_evaluations(labels: dict[str, str]) -> None:
+    turn_evals = list(st.session_state.get("turn_evaluations") or [])
+    if not turn_evals:
+        return
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("#### Per-question scores")
+    for i, te in enumerate(turn_evals, start=1):
+        kind = "Follow-up" if te.get("is_follow_up") else f"Q{te.get('question_index') or i}"
+        scored = te.get("scored", True)
+        score_label = f"{te.get('overall_score', 0)}/100" if scored else "unavailable"
+        question = html.escape(str(te.get("question") or ""))
+        answer = html.escape(str(te.get("answer") or ""))
+        feedback = html.escape(str(te.get("feedback") or ""))
+        dims = te.get("dimension_scores") or {}
+        dim_html = ""
+        if scored:
+            dim_html = "".join(
+                f'<span class="turn-dim">{html.escape(labels[key])} {html.escape(str(dims.get(key, 0)))}/10</span>'
+                for key in labels
+            )
+        st.markdown(
+            f"""
+            <div class="turn-eval-card">
+                <div class="turn-eval-head">
+                    <span class="turn-eval-label">{html.escape(str(kind))}</span>
+                    <span class="turn-eval-score">{html.escape(score_label)}</span>
+                </div>
+                <p class="turn-q"><strong>Interviewer:</strong> {question}</p>
+                <p class="turn-a"><strong>You:</strong> {answer}</p>
+                <div class="turn-dims">{dim_html}</div>
+                {f'<p class="turn-feedback">{feedback}</p>' if feedback else ""}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 def _run_retroactive_evaluation() -> None:
@@ -145,6 +194,7 @@ def _run_retroactive_evaluation() -> None:
             security_strikes=int(st.session_state.get("security_consecutive_strikes") or 0),
         )
         apply_state_to_session(state, st.session_state)
+        record_completed_interview(st.session_state)
         st.rerun()
     except Exception as exc:
         display_openai_error(exc)

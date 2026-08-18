@@ -89,6 +89,8 @@ def _stub_deps() -> None:
     st.secrets = {}
     st.file_uploader = lambda *a, **k: None
     st.text_area = lambda *a, **k: ""
+    st.download_button = lambda *a, **k: None
+    st.line_chart = lambda *a, **k: None
     st.container = lambda *a, **k: types.SimpleNamespace(
         __enter__=lambda s: s, __exit__=lambda *x: None
     )

@@ -168,6 +168,8 @@ def _bootstrap() -> None:
     _load_module("bknd.interviewlab_security", _root / "bknd" / "interviewlab_security.py")
     _load_module("bknd.interviewlab_completion", _root / "bknd" / "interviewlab_completion.py")
     _load_module("bknd.interviewlab_evaluator", _root / "bknd" / "interviewlab_evaluator.py")
+    _load_module("bknd.interviewlab_history", _root / "bknd" / "interviewlab_history.py")
+    _load_module("bknd.interviewlab_report", _root / "bknd" / "interviewlab_report.py")
     _load_module("bknd.interviewlab_realtime", _root / "bknd" / "interviewlab_realtime.py")
 
     _load_package("fntnd", _root / "fntnd" / "__init__.py")
@@ -185,6 +187,10 @@ def _bootstrap() -> None:
     )
 
     _load_package("fntnd.views", _root / "fntnd" / "views" / "__init__.py")
+    _load_module(
+        "fntnd.views.interviewlab_history_view",
+        _root / "fntnd" / "views" / "interviewlab_history_view.py",
+    )
     _load_module(
         "fntnd.views.interviewlab_landing_view",
         _root / "fntnd" / "views" / "interviewlab_landing_view.py",

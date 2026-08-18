@@ -272,3 +272,8 @@ def render_setup_view() -> None:
 
         st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
         _start_controls_fragment()
+
+        from fntnd.views.interviewlab_history_view import render_history_panel
+
+        st.markdown('<div class="section-spacer"></div>', unsafe_allow_html=True)
+        render_history_panel()

@@ -118,6 +118,8 @@ SESSION_DEFAULTS: dict[str, Any] = {
     "security_consecutive_strikes": 0,
     "security_terminated": False,
     "_security_notice": None,
+    "interview_history": [],
+    "interview_completed_at": None,
 }
 
 # -------------------

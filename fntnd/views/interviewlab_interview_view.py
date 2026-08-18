@@ -23,7 +23,12 @@ from bknd.interviewlab_realtime import (
 from bknd.interviewlab_security import SECURITY_UI_TERMINATED, SECURITY_UI_WARNING
 from fntnd.interviewlab_errors import display_openai_error
 from fntnd.interviewlab_realtime_component import render_realtime_interview
-from fntnd.interviewlab_state import apply_state_to_session, get_job_display_label, state_from_session
+from fntnd.interviewlab_state import (
+    apply_state_to_session,
+    get_job_display_label,
+    record_completed_interview,
+    state_from_session,
+)
 from interviewlab_config import REALTIME_SILENCE_DURATION_MS, SECURITY_MAX_CONSECUTIVE_STRIKES
 
 
@@ -451,6 +456,7 @@ def _finalize_and_evaluate(api_key: str, *, closing_note: str | None = None) -> 
             security_strikes=security_strikes,
         )
         apply_state_to_session(state, st.session_state)
+        record_completed_interview(st.session_state)
         st.session_state["realtime_ephemeral_key"] = None
         st.session_state["realtime_ephemeral_expires_at"] = None
         st.session_state["_disconnect_realtime"] = True

@@ -421,6 +421,7 @@ def security_terminated_evaluation_result(strikes: int) -> dict[str, Any]:
             f"Session ended after {strikes} consecutive blocked misuse attempts.",
         ],
         "sample_answer": "",
+        "turn_evaluations": [],
         "security_terminated": True,
     }
 

@@ -200,6 +200,7 @@ class TranscriptFilterAndEvalTests(unittest.TestCase):
         self.assertEqual(result["overall_score"], 0)
         self.assertTrue(result["security_terminated"])
         self.assertEqual(result["dimension_scores"]["communication_clarity"], 0)
+        self.assertEqual(result["turn_evaluations"], [])
 
         state = InterviewState(
             chat_history=[

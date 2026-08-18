@@ -9,18 +9,21 @@ Session state helpers for InterviewLab.
 
 from __future__ import annotations
 
+import copy
+from datetime import datetime, timezone
 from typing import Any
 
 import streamlit as st
 
 from bknd.interviewlab_engine import InterviewState
+from bknd.interviewlab_history import build_history_entry, upsert_history_entry
 from interviewlab_config import DEFAULT_DURATION_MINUTES, SESSION_DEFAULTS, TOTAL_QUESTIONS
 
 
 def init_session_state() -> None:
     """Seed all required keys once per browser session."""
     for key, default in SESSION_DEFAULTS.items():
-        st.session_state.setdefault(key, default)
+        st.session_state.setdefault(key, copy.deepcopy(default))
 
 
 def get_job_display_label(session: dict | Any = None) -> str:
@@ -112,7 +115,7 @@ def apply_state_to_session(state: InterviewState, session: dict[str, Any] | Any)
 
 
 def reset_runtime_session() -> None:
-    """Reset interview runtime while preserving setup fields."""
+    """Reset interview runtime while preserving setup fields and history."""
     preserved = {
         "interview_mode": st.session_state.get("interview_mode"),
         "target_role": st.session_state.get("target_role"),
@@ -126,7 +129,51 @@ def reset_runtime_session() -> None:
         "interview_duration_minutes": st.session_state.get(
             "interview_duration_minutes", DEFAULT_DURATION_MINUTES
         ),
+        "interview_history": list(st.session_state.get("interview_history") or []),
     }
     for key, default in SESSION_DEFAULTS.items():
-        st.session_state[key] = default
+        st.session_state[key] = copy.deepcopy(default)
     st.session_state.update(preserved)
+
+
+def record_completed_interview(session: dict[str, Any] | Any = None) -> dict[str, Any]:
+    """Store the current evaluation in interview history (fingerprint-deduped)."""
+    if session is None:
+        session = st.session_state
+    results = session.get("evaluation_results") or {}
+    if not results:
+        return {}
+
+    completed_at = session.get("interview_completed_at") or datetime.now(
+        timezone.utc
+    ).isoformat(timespec="seconds")
+    session["interview_completed_at"] = completed_at
+    responses = [
+        r for r in (session.get("responses") or []) if (r.get("answer") or "").strip()
+    ]
+    answer_count = len(responses) or sum(
+        1
+        for m in (session.get("chat_history") or [])
+        if m.get("role") == "user" and (m.get("content") or "").strip()
+    )
+    entry = build_history_entry(
+        mode=session.get("interview_mode") or "Behavioral",
+        role_label=get_job_display_label(session),
+        job_description=session.get("job_description") or "",
+        duration_minutes=int(
+            session.get("interview_duration_minutes") or DEFAULT_DURATION_MINUTES
+        ),
+        evaluation_results=results,
+        turn_evaluations=list(session.get("turn_evaluations") or []),
+        chat_history=list(session.get("chat_history") or []),
+        answer_count=answer_count,
+        security_terminated=bool(
+            session.get("security_terminated") or results.get("security_terminated")
+        ),
+        completed_at=completed_at,
+    )
+    session["interview_history"] = upsert_history_entry(
+        list(session.get("interview_history") or []),
+        entry,
+    )
+    return entry
