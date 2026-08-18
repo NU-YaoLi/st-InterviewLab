@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import sys
 
 import streamlit as st
 
@@ -15,7 +16,6 @@ from bknd.interviewlab_engine import (
 from bknd.interviewlab_evaluator import run_evaluation
 from bknd.interviewlab_completion import looks_like_interview_end
 from bknd.interviewlab_language import NON_ENGLISH_UI_MESSAGE, is_english_text
-from bknd.interviewlab_openai import get_openai_client
 from bknd.interviewlab_realtime import (
     finalize_realtime_interview,
     sync_transcript_to_state,
@@ -30,6 +30,15 @@ from fntnd.interviewlab_state import (
     state_from_session,
 )
 from interviewlab_config import REALTIME_SILENCE_DURATION_MS, SECURITY_MAX_CONSECUTIVE_STRIKES
+
+
+def get_openai_client(api_key: str):
+    """Resolve the bootstrapped client factory without a Cloud-fragile dotted import."""
+    helper = sys.modules.get("bknd.interviewlab_openai")
+    fn = getattr(helper, "get_openai_client", None) if helper is not None else None
+    if not callable(fn):
+        raise ImportError("bknd.interviewlab_openai.get_openai_client is not available")
+    return fn(api_key)
 
 
 def _normalize_transcript_turns(transcript: list) -> list[dict]:

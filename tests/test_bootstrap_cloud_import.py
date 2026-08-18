@@ -138,6 +138,47 @@ class BootstrapCloudImportTests(unittest.TestCase):
         self.assertIsNotNone(views_pkg)
         self.assertTrue(hasattr(views_pkg, "interviewlab_evaluation_view"))
 
+        openai_helper = sys.modules.get("bknd.interviewlab_openai")
+        self.assertIsNotNone(openai_helper)
+        self.assertTrue(hasattr(openai_helper, "create_chat_completion"))
+        self.assertTrue(hasattr(openai_helper, "get_openai_client"))
+
+        evaluator = sys.modules.get("bknd.interviewlab_evaluator")
+        self.assertIsNotNone(evaluator)
+        self.assertTrue(hasattr(evaluator, "run_evaluation"))
+        self.assertNotIn(
+            "from bknd.interviewlab_openai import",
+            Path(evaluator.__file__).read_text(encoding="utf-8"),
+        )
+
+    def test_bootstrap_reloads_incomplete_openai_stub(self) -> None:
+        _stub_deps()
+        for key in list(sys.modules):
+            if key == "interviewlab_config" or key.startswith(("bknd", "fntnd")):
+                sys.modules.pop(key, None)
+
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+
+        stub = types.ModuleType("bknd.interviewlab_openai")
+        sys.modules["bknd.interviewlab_openai"] = stub
+
+        path = ROOT / "interviewlab_main.py"
+        loader = SourceFileLoader("interviewlab_main_stub_test", str(path))
+        spec = importlib.util.spec_from_file_location(
+            "interviewlab_main_stub_test", str(path), loader=loader
+        )
+        self.assertIsNotNone(spec)
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["interviewlab_main_stub_test"] = mod
+        loader.exec_module(mod)
+
+        openai_helper = sys.modules.get("bknd.interviewlab_openai")
+        self.assertIsNotNone(openai_helper)
+        self.assertIsNot(openai_helper, stub)
+        self.assertTrue(hasattr(openai_helper, "create_chat_completion"))
+        self.assertTrue(hasattr(sys.modules["fntnd.interviewlab_ftnd"], "main"))
+
 
 if __name__ == "__main__":
     unittest.main()

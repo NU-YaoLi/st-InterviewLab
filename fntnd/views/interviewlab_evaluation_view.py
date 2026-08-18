@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import html
+import sys
 
 import streamlit as st
 
 from bknd.interviewlab_evaluator import get_dimension_labels, run_evaluation
-from bknd.interviewlab_openai import get_openai_client
 from bknd.interviewlab_report import payload_from_session
 from fntnd.interviewlab_errors import display_openai_error
 from fntnd.interviewlab_state import (
@@ -21,6 +21,15 @@ from fntnd.views.interviewlab_history_view import (
     render_history_panel,
     render_report_downloads,
 )
+
+
+def get_openai_client(api_key: str):
+    """Resolve the bootstrapped client factory without a Cloud-fragile dotted import."""
+    helper = sys.modules.get("bknd.interviewlab_openai")
+    fn = getattr(helper, "get_openai_client", None) if helper is not None else None
+    if not callable(fn):
+        raise ImportError("bknd.interviewlab_openai.get_openai_client is not available")
+    return fn(api_key)
 
 
 def render_evaluation_view() -> None:

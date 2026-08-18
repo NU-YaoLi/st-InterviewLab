@@ -9,15 +9,28 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 from typing import Any
 
 from openai import OpenAI, OpenAIError
 
 from bknd.interviewlab_engine import InterviewState
-from bknd.interviewlab_openai import create_chat_completion
 from interviewlab_config import INTERVIEWLAB_MODEL, get_rubric
 
 logger = logging.getLogger(__name__)
+
+
+def create_chat_completion(client: OpenAI, **kwargs: Any):
+    """Call the bootstrapped OpenAI helper without a Cloud-fragile dotted import."""
+    helper = sys.modules.get("bknd.interviewlab_openai")
+    fn = getattr(helper, "create_chat_completion", None) if helper is not None else None
+    if not callable(fn):
+        raise ImportError(
+            "bknd.interviewlab_openai.create_chat_completion is not available. "
+            "Confirm interviewlab_main bootstrap loaded the OpenAI helper."
+        )
+    return fn(client, **kwargs)
+
 
 EVALUATION_SYSTEM_PROMPT = """You are an expert interview coach evaluating a LIVE spoken mock interview.
 

@@ -59,6 +59,29 @@ _REQUIRED_CONFIG_NAMES = (
 _CONFIG_SNAPSHOT: dict[str, object] = {}
 _BOOTSTRAPPED = False
 
+# Python 3.14 on Streamlit Cloud can leave a SourceFileLoader stub in
+# sys.modules after a failed dotted import. Skipping re-exec then hides
+# names like create_chat_completion even though the file defines them.
+_MODULE_REQUIRED_ATTRS: dict[str, tuple[str, ...]] = {
+    "bknd.interviewlab_openai": (
+        "create_chat_completion",
+        "get_openai_client",
+        "model_supports_temperature",
+    ),
+    "bknd.interviewlab_evaluator": (
+        "run_evaluation",
+        "evaluate_full_interview",
+        "get_dimension_labels",
+    ),
+    "fntnd.interviewlab_ftnd": ("main",),
+    "fntnd.views.interviewlab_landing_view": ("render_setup_view",),
+    "fntnd.views.interviewlab_interview_view": (
+        "render_interview_view",
+        "end_interview_and_show_results",
+    ),
+    "fntnd.views.interviewlab_evaluation_view": ("render_evaluation_view",),
+}
+
 
 def _attach_to_parent(name: str, mod: object) -> None:
     """Expose SourceFileLoader modules as package attributes for dotted imports."""
@@ -70,10 +93,18 @@ def _attach_to_parent(name: str, mod: object) -> None:
         setattr(parent, attr, mod)
 
 
+def _missing_attrs(mod: object, required: tuple[str, ...]) -> list[str]:
+    return [n for n in required if not hasattr(mod, n)]
+
+
 def _load_module(name: str, file_path: Path) -> None:
-    if name in sys.modules:
-        _attach_to_parent(name, sys.modules[name])
+    required = _MODULE_REQUIRED_ATTRS.get(name, ())
+    existing = sys.modules.get(name)
+    if existing is not None and not _missing_attrs(existing, required):
+        _attach_to_parent(name, existing)
         return
+    if existing is not None:
+        sys.modules.pop(name, None)
     path_str = str(file_path.resolve())
     if not file_path.is_file():
         raise ImportError(f"Required module missing: {path_str}")
@@ -88,6 +119,12 @@ def _load_module(name: str, file_path: Path) -> None:
     except Exception:
         sys.modules.pop(name, None)
         raise
+    missing = _missing_attrs(mod, required)
+    if missing:
+        sys.modules.pop(name, None)
+        raise ImportError(
+            f"{name} loaded from {path_str} but is missing {missing}."
+        )
     _attach_to_parent(name, mod)
 
 
@@ -125,9 +162,13 @@ def _reinforce_config() -> None:
 
 
 def _load_package(name: str, init_path: Path) -> None:
-    if name in sys.modules:
-        _attach_to_parent(name, sys.modules[name])
+    required = _MODULE_REQUIRED_ATTRS.get(name, ())
+    existing = sys.modules.get(name)
+    if existing is not None and not _missing_attrs(existing, required):
+        _attach_to_parent(name, existing)
         return
+    if existing is not None:
+        sys.modules.pop(name, None)
     if not init_path.is_file():
         raise ImportError(f"Required package init missing: {init_path}")
     pkg_dir = str(init_path.parent)
@@ -222,7 +263,10 @@ def _bootstrap() -> None:
         _ftnd_mod = sys.modules.get("fntnd.interviewlab_ftnd")
 
     if _ftnd_mod is None or not hasattr(_ftnd_mod, "main"):
-        raise ImportError("Failed to load fntnd.interviewlab_ftnd.main")
+        raise ImportError(
+            "Failed to load fntnd.interviewlab_ftnd.main. "
+            "An earlier bootstrap module likely failed to finish loading."
+        )
 
     _BOOTSTRAPPED = True
 
